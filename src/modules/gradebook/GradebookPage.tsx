@@ -1502,11 +1502,24 @@ export function GradebookPage() {
     rowIndex: number,
     columnIndex: number
   ): void => {
+    const field = event.currentTarget;
     const offsets: Record<string, [number, number]> = {
       Enter: [1, 0],
       ArrowDown: [1, 0],
       ArrowUp: [-1, 0]
     };
+    // Only hand off ArrowLeft/ArrowRight to the neighboring cell when the caret is already
+    // at that edge of the value, so normal in-cell text navigation keeps working.
+    if (event.key === "ArrowLeft" && field.selectionStart === 0 && field.selectionEnd === 0) {
+      offsets.ArrowLeft = [0, -1];
+    }
+    if (
+      event.key === "ArrowRight" &&
+      field.selectionStart === field.value.length &&
+      field.selectionEnd === field.value.length
+    ) {
+      offsets.ArrowRight = [0, 1];
+    }
     const offset = offsets[event.key];
     if (!offset) return;
     const target = document.querySelector<HTMLInputElement>(

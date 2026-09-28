@@ -27,7 +27,8 @@ import {
   MAX_TOTAL_RESOURCE_BYTES,
   base64DecodedByteLength,
   isAllowedResourceMimeType,
-  normalizeHttpUrl
+  normalizeHttpUrl,
+  parseJournalEntryOwnerId
 } from "../../shared/resources/resources";
 import { defaultScheduleDays } from "../../shared/schedule/weekDays";
 import { Modal } from "../../shared/ui/Modal";
@@ -1581,6 +1582,28 @@ export function validateDatabasePayload(parsed: unknown): Record<string, unknown
     if (row.updatedAt !== undefined) requireIsoDateTimeString(row.updatedAt, "studentFollowUps.updatedAt");
     requireBoolean(row, "studentFollowUps", "resolved");
   }
+  for (const row of rows("behaviorMarks")) {
+    const studentId = requireString(row, "behaviorMarks", "studentId");
+    const classId = requireString(row, "behaviorMarks", "classId");
+    requireReference(studentId, studentIds, "behaviorMarks", "studentId");
+    requireReference(classId, classIds, "behaviorMarks", "classId");
+    if (studentClassById.get(studentId) !== classId) {
+      throw new Error("La tabla 'behaviorMarks' contiene un registro de un alumno fuera del curso indicado.");
+    }
+    const subjectId = optionalString(row, "behaviorMarks", "subjectId");
+    if (subjectId) {
+      requireReference(subjectId, subjectIds, "behaviorMarks", "subjectId");
+      if (!subjectCourseKeys.has(`${subjectId}:${classId}`)) {
+        throw new Error("La tabla 'behaviorMarks' usa una asignatura no asociada al curso.");
+      }
+    }
+    requireDateString(row, "behaviorMarks", "date");
+    if (!["positive", "negative"].includes(requireString(row, "behaviorMarks", "kind"))) {
+      throw new Error("La tabla 'behaviorMarks' contiene 'kind' no válido.");
+    }
+    optionalString(row, "behaviorMarks", "note");
+    requireIsoDateTimeString(row.createdAt, "behaviorMarks.createdAt");
+  }
   for (const row of rows("familyContacts")) {
     const studentId = requireString(row, "familyContacts", "studentId");
     const classId = requireString(row, "familyContacts", "classId");
@@ -1642,6 +1665,22 @@ export function validateDatabasePayload(parsed: unknown): Record<string, unknown
       requireReference(ownerId, studentIds, "resourceAttachments", "ownerId");
     } else if (ownerType === "task") {
       requireReference(ownerId, taskIds, "resourceAttachments", "ownerId");
+    } else if (ownerType === "journalEntry") {
+      const owner = parseJournalEntryOwnerId(ownerId);
+      if (!owner) {
+        throw new Error("La tabla 'resourceAttachments' contiene un 'ownerId' de diario no válido.");
+      }
+      requireReference(owner.classId, classIds, "resourceAttachments", "ownerId");
+      requireReference(owner.subjectId, subjectIds, "resourceAttachments", "ownerId");
+      if (!/^\d{4}-\d{2}-\d{2}$/.test(owner.date)) {
+        throw new Error("La tabla 'resourceAttachments' contiene una fecha de diario no válida.");
+      }
+      if (!hasExceptionalDailyRecord(owner.classId, owner.subjectId, owner.date, owner.scheduleSlotId)) {
+        requireReference(owner.scheduleSlotId, scheduleSlotIds, "resourceAttachments", "ownerId");
+      }
+      if (owner.taskId) {
+        requireReference(owner.taskId, taskIds, "resourceAttachments", "ownerId");
+      }
     } else {
       throw new Error("La tabla 'resourceAttachments' contiene 'ownerType' no válido.");
     }

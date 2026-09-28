@@ -11,6 +11,22 @@ import {
   type BackupFreshness
 } from "../backup/status";
 
+const REMINDER_TEXT: Record<BackupFreshness, { title: string; body: (statusLabel: string) => string }> = {
+  missing: {
+    title: "Protege tu trabajo",
+    body: () => "Los datos están solo en este navegador hasta que descargues una copia cifrada."
+  },
+  current: { title: "", body: () => "" },
+  due: {
+    title: "Actualiza tu copia de seguridad",
+    body: (statusLabel) => `${statusLabel}. Conviene renovarla pronto.`
+  },
+  overdue: {
+    title: "Tu copia de seguridad lleva mucho retraso",
+    body: (statusLabel) => `${statusLabel}. Si el navegador borrase sus datos ahora, perderías todo lo hecho desde entonces.`
+  }
+};
+
 function useBackupState(): { lastBackupAt: string | null; lastVerifiedAt: string | null; freshness: BackupFreshness } {
   const [lastBackupAt, setLastBackupAt] = useState(() => readLastBackupAt());
   const [lastVerifiedAt, setLastVerifiedAt] = useState(() => readLastVerifiedBackupAt());
@@ -80,13 +96,13 @@ export function BackupStatusLink() {
 }
 
 export function BackupReminder() {
-  const { freshness } = useBackupState();
+  const { lastBackupAt, freshness } = useBackupState();
   const hasLocalData = useHasLocalData();
-  const [dismissed, setDismissed] = useState(() => {
+  const [dismissedTier, setDismissedTier] = useState<string | null>(() => {
     try {
-      return window.sessionStorage.getItem("profeplus_backup_reminder_dismissed") === "1";
+      return window.sessionStorage.getItem("profeplus_backup_reminder_dismissed");
     } catch {
-      return false;
+      return null;
     }
   });
 
@@ -106,7 +122,15 @@ export function BackupReminder() {
     };
   }, []);
 
-  if (!hasLocalData || dismissed || freshness === "current") return null;
+  // Dismissing only silences the current urgency tier for this session - if the backup keeps
+  // aging and crosses into a more urgent tier (due -> overdue), the reminder comes back.
+  // "1" is a legacy value from before per-tier dismissal existed and still silences unconditionally.
+  const isDismissed = dismissedTier === freshness || dismissedTier === "1";
+
+  if (!hasLocalData || isDismissed || freshness === "current") return null;
+
+  const statusLabel = backupStatusLabel(lastBackupAt);
+  const text = REMINDER_TEXT[freshness];
 
   return (
     <aside
@@ -117,12 +141,8 @@ export function BackupReminder() {
       aria-label="Recordatorio de copia de seguridad"
     >
       <div>
-        <strong>{freshness === "missing" ? "Protege tu trabajo" : "Actualiza tu copia de seguridad"}</strong>
-        <span>
-          {freshness === "missing"
-            ? "Los datos están solo en este navegador hasta que descargues una copia cifrada."
-            : "Tu última copia ya no refleja los cambios recientes."}
-        </span>
+        <strong>{text.title}</strong>
+        <span>{text.body(statusLabel)}</span>
       </div>
       <NavLink className="btn primary" to="/config/database">Crear copia</NavLink>
       <IconButton
@@ -131,11 +151,11 @@ export function BackupReminder() {
         label="Descartar recordatorio durante esta sesión"
         onClick={() => {
           try {
-            window.sessionStorage.setItem("profeplus_backup_reminder_dismissed", "1");
+            window.sessionStorage.setItem("profeplus_backup_reminder_dismissed", freshness);
           } catch {
             // The in-memory dismissal still works when session storage is blocked.
           }
-          setDismissed(true);
+          setDismissedTier(freshness);
         }}
       />
     </aside>

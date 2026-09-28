@@ -149,6 +149,37 @@ export function createLinkResource(
   };
 }
 
+/**
+ * Attachments on a journal/diary entry (Hoy) are owned by the exact entry they were added
+ * to - the same (class, subject, date, slot) scope as its comments, plus the task when one is
+ * selected, so attachments stay put across reschedules and stacked same-slot tasks.
+ */
+export function journalEntryOwnerId(
+  classId: string,
+  subjectId: string,
+  date: string,
+  scheduleSlotId: string,
+  taskId?: string
+): string {
+  return [classId, subjectId, date, scheduleSlotId, taskId ?? ""].join(":");
+}
+
+export type JournalEntryOwner = {
+  classId: string;
+  subjectId: string;
+  date: string;
+  scheduleSlotId: string;
+  taskId: string;
+};
+
+export function parseJournalEntryOwnerId(ownerId: string): JournalEntryOwner | null {
+  const parts = ownerId.split(":");
+  if (parts.length !== 5) return null;
+  const [classId, subjectId, date, scheduleSlotId, taskId] = parts;
+  if (!classId || !subjectId || !date || !scheduleSlotId) return null;
+  return { classId, subjectId, date, scheduleSlotId, taskId };
+}
+
 export function formatFileSize(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;

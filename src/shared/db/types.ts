@@ -363,6 +363,20 @@ export type StudentFollowUp = {
   updatedAt?: string;
 };
 
+export type BehaviorMarkKind = "positive" | "negative";
+
+/** A single quick tap logging in-class behavior - lighter weight than a StudentFollowUp. */
+export type BehaviorMark = {
+  id: string;
+  studentId: string;
+  classId: string;
+  subjectId?: string;
+  date: string;
+  kind: BehaviorMarkKind;
+  note?: string;
+  createdAt: string;
+};
+
 export type FamilyContactChannel = "phone" | "email" | "meeting" | "message" | "other";
 
 export type FamilyContact = {
@@ -398,7 +412,7 @@ export type SupportGroupMember = {
   createdAt: string;
 };
 
-export type ResourceOwnerType = "student" | "task";
+export type ResourceOwnerType = "student" | "task" | "journalEntry";
 export type ResourceKind = "file" | "link";
 
 /** A local file or web link attached to a student profile or reusable task. */

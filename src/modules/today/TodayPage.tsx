@@ -5,6 +5,7 @@ import { setSelectedClass } from "../../app/store";
 import { db } from "../../shared/db/database";
 import type {
   AttendanceEntry,
+  BehaviorMark,
   ClassGroup,
   DailyClassRecord,
   ScheduleDay,
@@ -37,6 +38,8 @@ import { buildAllPresentDraft } from "./todayAttendance";
 import { isTodayDraft, type TodayDraft } from "./todayDraft";
 import { useRecoverableDraft } from "../../shared/hooks/useRecoverableDraft";
 import { DraftRecoveryNotice } from "../../shared/ui/DraftRecoveryNotice";
+import { ResourceManager } from "../../shared/resources/ResourceManager";
+import { journalEntryOwnerId } from "../../shared/resources/resources";
 
 const STATUS_LABELS: Record<AttendanceEntry["status"], string> = {
   present: "Presente",
@@ -140,6 +143,7 @@ export function TodayPage() {
   const [taskSessions, setTaskSessions] = useState<TaskSession[]>([]);
   const [taskDailySettings, setTaskDailySettings] = useState<TaskDailyEvaluationSetting[]>([]);
   const [taskStudentComments, setTaskStudentComments] = useState<TaskStudentComment[]>([]);
+  const [behaviorMarks, setBehaviorMarks] = useState<BehaviorMark[]>([]);
   const [statusDraft, setStatusDraft] = useState<Map<string, AttendanceEntry["status"]>>(new Map());
   const [noteDraft, setNoteDraft] = useState<Map<string, string>>(new Map());
   const [attendanceDetailsDraft, setAttendanceDetailsDraft] = useState<Map<string, AttendanceDetailsDraft>>(new Map());
@@ -173,7 +177,8 @@ export function TodayPage() {
       taskSessionsData,
       taskDailySettingsData,
       taskStudentCommentsData,
-      dailyClassRecordsData
+      dailyClassRecordsData,
+      behaviorMarksData
     ] = await Promise.all([
       db.classGroups.orderBy("name").toArray(),
       db.subjects.orderBy("name").toArray(),
@@ -185,7 +190,8 @@ export function TodayPage() {
       db.taskSessions.toArray(),
       db.taskDailyEvaluationSettings.toArray(),
       db.taskStudentComments.toArray(),
-      db.dailyClassRecords.toArray()
+      db.dailyClassRecords.toArray(),
+      db.behaviorMarks.toArray()
     ]);
 
     setClassGroups(classGroupsData);
@@ -199,6 +205,7 @@ export function TodayPage() {
     setTaskDailySettings(taskDailySettingsData);
     setTaskStudentComments(taskStudentCommentsData);
     setDailyClassRecords(dailyClassRecordsData);
+    setBehaviorMarks(behaviorMarksData);
   };
 
   useEffect(() => {
@@ -325,6 +332,33 @@ export function TodayPage() {
     }
     return map;
   }, [attendanceByStudent, students]);
+
+  const behaviorCountsByStudent = useMemo(() => {
+    const map = new Map<string, { positive: number; negative: number }>();
+    if (!selectedSlot) return map;
+    for (const mark of behaviorMarks) {
+      if (mark.date !== selectedDate || mark.classId !== selectedSlot.classId) continue;
+      const counts = map.get(mark.studentId) ?? { positive: 0, negative: 0 };
+      counts[mark.kind] += 1;
+      map.set(mark.studentId, counts);
+    }
+    return map;
+  }, [behaviorMarks, selectedDate, selectedSlot]);
+
+  const addBehaviorMark = async (studentId: string, kind: BehaviorMark["kind"]): Promise<void> => {
+    if (!selectedSlot) return;
+    const mark: BehaviorMark = {
+      id: crypto.randomUUID(),
+      studentId,
+      classId: selectedSlot.classId,
+      subjectId: selectedSlot.subjectId,
+      date: selectedDate,
+      kind,
+      createdAt: new Date().toISOString()
+    };
+    await db.behaviorMarks.add(mark);
+    setBehaviorMarks((current) => [...current, mark]);
+  };
 
   const attendanceSummary = useMemo(() => {
     const summary = { present: 0, late: 0, absent: 0 };
@@ -871,6 +905,9 @@ export function TodayPage() {
   const plannerLink = selectedSlot
     ? `/planner?date=${selectedDate}&classId=${encodeURIComponent(selectedSlot.classId)}&subjectId=${encodeURIComponent(selectedSlot.subjectId)}&slotId=${encodeURIComponent(selectedSlot.slotId)}`
     : "/planner";
+  const journalOwnerId = selectedSlot
+    ? journalEntryOwnerId(selectedSlot.classId, selectedSlot.subjectId, selectedDate, selectedSlot.slotId, selectedTask?.id)
+    : null;
   const isAttendanceSaved =
     students.length > 0 &&
     attendanceEntries.length === students.length &&
@@ -1091,6 +1128,13 @@ export function TodayPage() {
                         <NavLink className="btn secondary compact-link" to={plannerLink}>Planificar esta clase</NavLink>
                       </div>
                     ) : null}
+                    {journalOwnerId ? (
+                      <ResourceManager
+                        ownerType="journalEntry"
+                        ownerId={journalOwnerId}
+                        heading="Adjuntos de esta sesión"
+                      />
+                    ) : null}
                   </div>
                 </div>
 
@@ -1155,9 +1199,36 @@ export function TodayPage() {
                       const availableStatuses: AttendanceEntry["status"][] = currentStatus === "present"
                         ? ["late", "absent"]
                         : ["present", "late", "absent"];
+                      const behaviorCounts = behaviorCountsByStudent.get(student.id);
                       return (
                         <div key={student.id} className="today-student-row exception-flow">
-                          <strong>{formatName(student)}</strong>
+                          <div className="today-student-name-cell">
+                            <strong>{formatName(student)}</strong>
+                            <div className="today-behavior-taps" aria-label={`Conducta de ${formatName(student)}`}>
+                              <button
+                                type="button"
+                                className="today-behavior-tap positive"
+                                aria-label={`Conducta positiva para ${formatName(student)}`}
+                                onClick={() => void addBehaviorMark(student.id, "positive")}
+                              >
+                                <span aria-hidden="true">+</span>
+                              </button>
+                              {behaviorCounts && (behaviorCounts.positive > 0 || behaviorCounts.negative > 0) ? (
+                                <small className="today-behavior-count">
+                                  {behaviorCounts.positive > 0 ? `+${behaviorCounts.positive}` : ""}
+                                  {behaviorCounts.negative > 0 ? ` −${behaviorCounts.negative}` : ""}
+                                </small>
+                              ) : null}
+                              <button
+                                type="button"
+                                className="today-behavior-tap negative"
+                                aria-label={`Conducta negativa para ${formatName(student)}`}
+                                onClick={() => void addBehaviorMark(student.id, "negative")}
+                              >
+                                <span aria-hidden="true">−</span>
+                              </button>
+                            </div>
+                          </div>
                           <div className="today-exception-control">
                             <span className={`today-current-status ${currentStatus}`}>
                               {STATUS_LABELS[currentStatus]}

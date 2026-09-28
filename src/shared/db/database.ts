@@ -26,6 +26,7 @@ import type {
   TaskDirectGrade,
   RubricTemplate,
   ResourceAttachment,
+  BehaviorMark,
   ScheduleDay,
   ScheduleSettings,
   UnitBlock,
@@ -93,6 +94,7 @@ class EdunozaDB extends Dexie {
   resourceAttachments!: Table<ResourceAttachment, string>;
   classroomLayouts!: Table<ClassroomLayout, string>;
   feedbackComments!: Table<FeedbackComment, string>;
+  behaviorMarks!: Table<BehaviorMark, string>;
 
   constructor() {
     // Keep the legacy database name so same-origin upgrades retain existing records.
@@ -269,6 +271,9 @@ class EdunozaDB extends Dexie {
       moodleBindings:
         "id,connectionId,courseId,remoteGroupId,classId,subjectId,kind,remoteId,localId,[connectionId+courseId],[connectionId+courseId+kind+remoteId],[connectionId+courseId+classId+subjectId]",
       moodleOperations: "id,connectionId,createdAt,kind,[connectionId+createdAt]"
+    });
+    this.version(9).stores({
+      behaviorMarks: "id,studentId,classId,subjectId,date,kind,createdAt,[studentId+date],[classId+date]"
     });
   }
 }

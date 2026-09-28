@@ -193,13 +193,14 @@ describe("database payload validation", () => {
 
   it("defines only the current clean database tables", () => {
     expect(db.name).toBe("profeplus-db");
-    expect(db.verno).toBe(8);
+    expect(db.verno).toBe(9);
     expect(db.tables.map((table) => table.name).sort()).toEqual([
       "academicPeriods",
       "aiReports",
       "appPreferences",
       "assessments",
       "attendanceEntries",
+      "behaviorMarks",
       "checklistTemplates",
       "classGroups",
       "classroomLayouts",
@@ -426,6 +427,67 @@ describe("database payload validation", () => {
     });
 
     expect(validateDatabasePayload(payload).resourceAttachments).toHaveLength(2);
+  });
+
+  it("accepts journal-entry attachments scoped to a valid class/subject/date/slot, with or without a task", () => {
+    const timestamp = "2026-08-12T09:00:00.000Z";
+    const payload = validPayload({
+      resourceAttachments: [
+        {
+          id: "resource-journal-task",
+          ownerType: "journalEntry",
+          ownerId: "class-1:subject-1:2026-05-22:slot-1:task-1",
+          kind: "link",
+          title: "Foto del trabajo en clase",
+          url: "https://example.org/photo",
+          createdAt: timestamp,
+          updatedAt: timestamp
+        },
+        {
+          id: "resource-journal-free",
+          ownerType: "journalEntry",
+          ownerId: "class-1:subject-1:2026-05-22:slot-1:",
+          kind: "link",
+          title: "Registro libre",
+          url: "https://example.org/note",
+          createdAt: timestamp,
+          updatedAt: timestamp
+        }
+      ]
+    });
+
+    expect(validateDatabasePayload(payload).resourceAttachments).toHaveLength(2);
+  });
+
+  it("rejects journal-entry attachments with a malformed or dangling ownerId", () => {
+    const timestamp = "2026-08-12T09:00:00.000Z";
+    const malformed = validPayload({
+      resourceAttachments: [{
+        id: "resource-journal-bad",
+        ownerType: "journalEntry",
+        ownerId: "not-enough-parts",
+        kind: "link",
+        title: "Registro",
+        url: "https://example.org/note",
+        createdAt: timestamp,
+        updatedAt: timestamp
+      }]
+    });
+    expect(() => validateDatabasePayload(malformed)).toThrow(/ownerId.*diario/);
+
+    const unknownTask = validPayload({
+      resourceAttachments: [{
+        id: "resource-journal-unknown-task",
+        ownerType: "journalEntry",
+        ownerId: "class-1:subject-1:2026-05-22:slot-1:task-missing",
+        kind: "link",
+        title: "Registro",
+        url: "https://example.org/note",
+        createdAt: timestamp,
+        updatedAt: timestamp
+      }]
+    });
+    expect(() => validateDatabasePayload(unknownTask)).toThrow(/ownerId/);
   });
 
   it("accepts a valid classroom layout and rejects cross-class or duplicate seats", () => {

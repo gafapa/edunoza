@@ -1372,6 +1372,52 @@ input, textarea, select, button, a {
   white-space: nowrap;
 }
 
+.today-student-name-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.today-behavior-taps {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.today-behavior-tap {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid #cbd8ea;
+  border-radius: 999px;
+  background: #ffffff;
+  color: #44618a;
+  cursor: pointer;
+  font-size: 1.1rem;
+  font-weight: 900;
+  line-height: 1;
+}
+
+.today-behavior-tap.positive {
+  border-color: #8fce9a;
+  color: #1e7d3a;
+}
+
+.today-behavior-tap.negative {
+  border-color: #e3a3a3;
+  color: #a02a2a;
+}
+
+.today-behavior-count {
+  color: #607696;
+  font-size: 0.72rem;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .today-note-button.filled {
   border-color: #789ed8;
   background: linear-gradient(180deg, #e9f2ff 0%, #d7e8ff 100%);
@@ -8517,6 +8563,20 @@ td {
 
 .icon-btn.backup-reminder-dismiss:hover {
   background: rgba(114, 80, 26, 0.09);
+}
+
+.backup-reminder.overdue {
+  border-color: #d99b8f;
+  background: #fdeeeb;
+  color: #7a2a1a;
+}
+
+.backup-reminder.overdue .icon-btn.backup-reminder-dismiss {
+  color: #7a2a1a;
+}
+
+.backup-reminder.overdue .icon-btn.backup-reminder-dismiss:hover {
+  background: rgba(122, 42, 26, 0.09);
 }
 
 .backup-trust-panel {
