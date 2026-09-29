@@ -2,7 +2,7 @@
 
 ## Automated verification
 
-The CI workflow runs lint, TypeScript checks, Vitest, Node security regressions, the production build, the dependency audit, the test-profile build, and every Playwright test. Browser tests use synthetic records and isolated browser contexts; they require no production credentials.
+The CI workflow runs lint, TypeScript checks, Vitest, Node security regressions, the production build, the dependency audit, the local/CI verification build, and every Playwright test. Browser tests use synthetic records and isolated browser contexts on localhost; they require no production credentials. The only public deployment is `https://edunoza.com`; `.env.test` does not configure a separate public site.
 
 Playwright uses its managed Chromium browser, installed with `npx playwright install --with-deps chromium` on Linux. Run `npx playwright install chromium` before `npm run test:e2e` on a local machine.
 
