@@ -4,7 +4,7 @@ Edunoza is an offline-first teacher notebook packaged as a PWA. It is built for 
 
 All academic data is stored locally in the browser with IndexedDB. AI features connect to the selected provider from the browser (through the Proxy extension for Ollama); Edunoza does not operate an AI proxy server or receive those requests.
 
-The optional [read-only Moodle connection](docs/moodle-integration.md) associates existing local groups, students and tasks with Moodle information through the Proxy extension. Reviewed updates and supported assignment grades are applied locally; Edunoza does not modify Moodle. Tokens remain in memory, and disconnecting preserves academic work and saved associations.
+The optional [read-only Moodle connection](docs/moodle-integration.md) associates existing local groups, students and tasks with Moodle information through the Proxy extension. Reviewed updates and supported assignment grades are applied locally; Edunoza does not modify Moodle. Tokens remain in memory unless the user explicitly saves a validated token on this device. Saved tokens use unencrypted localStorage, are excluded from academic backups, and can be deleted separately. Disconnecting preserves academic work and saved associations.
 
 ## Current Scope
 
@@ -87,7 +87,7 @@ The Vite dev server prints the local URL. By default it uses the configured base
 ```bash
 npm run dev        # Start Vite in development mode
 npm run build      # Type-check and build production assets into dist/
-npm run build:test # Build the test deployment profile
+npm run build:test # Build the local/CI verification profile with analytics disabled
 npm run build:production # Build the production deployment profile
 npm run preview    # Preview the production build
 npm run clean      # Remove generated builds, coverage, logs, and TypeScript caches
@@ -253,7 +253,7 @@ The expected result is:
 - ESLint passes without errors or warnings.
 - Every Vitest suite passes.
 - Production build succeeds.
-- The dependency audit passes with one reviewed React Router advisory exception. The affected RSC/server-action path is not enabled in this client-only SPA.
+- The dependency audit passes with no known vulnerabilities and no advisory exceptions.
 
 The latest production browser QA covered:
 
@@ -265,16 +265,17 @@ The latest production browser QA covered:
 - Console health without relevant errors or warnings.
 - Tutor workflows at 390 × 844 without document overflow, with accessible tab/tabpanel semantics.
 
-GitHub Actions runs the same `npm run verify` pipeline on pushes to `main` and on pull requests.
+GitHub Actions runs `npm run verify`, the local/CI verification build, and the complete Chromium browser suite on pushes to `main`, pull requests, and manual dispatch. See [CI and security maintenance](docs/ci-and-security.md) for runner costs, diagnostics, and dependency updates.
 
-## Deployment Environments
+## Deployment
 
-Both deployments serve the SPA from the domain root:
+The application is published only at `https://edunoza.com`, serving the SPA from the domain root:
 
 | Environment | Public URL | Build command | Environment file |
 | --- | --- | --- | --- |
-| Test | `https://test.edunoza.com` | `npm run build:test` | `.env.test` |
 | Production | `https://edunoza.com` | `npm run build:production` | `.env.production` |
+
+The `npm run build:test` command and `.env.test` are reserved for local and CI verification with analytics disabled. They do not represent a separate public deployment.
 
 Each build writes the deployable static application to `dist/`. The hosting
 provider must:
@@ -286,9 +287,8 @@ provider must:
   reload Nginx after validating the configuration.
 - For production analytics, include `deploy/nginx-analytics-log-format.conf`
   in the global `http` block and `deploy/nginx-analytics-endpoint.conf` in the
-  HTTPS server block. Test analytics remain disabled unless explicitly enabled.
-- Avoid sharing browser storage or service-worker state between the two
-  domains. Their separate origins provide this isolation automatically.
+  HTTPS server block. Local and CI verification analytics remain disabled unless explicitly enabled.
+- Run browser tests on localhost with isolated browser contexts rather than against production academic data.
 
 The deployed content security policy must keep the supported cloud API origins and
 loopback endpoints in `connect-src` when AI features are enabled.

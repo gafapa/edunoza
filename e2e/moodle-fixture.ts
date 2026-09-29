@@ -54,6 +54,11 @@ export async function installMoodleFixture(page: Page): Promise<void> {
 }
 
 export async function seedMoodleLocalRecords(page: Page): Promise<void> {
+  // Wait for the app's initial database defaults before taking academic snapshots.
+  await page.waitForFunction(async () => {
+    const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
+    return Boolean(await db.scheduleSettings.get("default"));
+  });
   await page.evaluate(async () => {
     const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
     await db.classGroups.put({ id: "moodle-local-class", name: "My existing group", level: "ESO", schoolYear: "2026-2027" });

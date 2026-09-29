@@ -13,10 +13,15 @@ function legacyKey(server: string): string {
 }
 
 function parseStoredToken(raw: string | null): SavedToken | null {
-  const value = JSON.parse(raw ?? "null") as SavedToken | null;
-  if (!value || typeof value.token !== "string" || !/^[a-zA-Z0-9]{1,256}$/.test(value.token) ||
-      !Number.isSafeInteger(value.userId) || value.userId <= 0) return null;
-  return { token: value.token, userId: value.userId };
+  try {
+    const value = JSON.parse(raw ?? "null") as SavedToken | null;
+    if (!value || typeof value.token !== "string" || !/^[a-zA-Z0-9]{1,256}$/.test(value.token) ||
+        !Number.isSafeInteger(value.userId) || value.userId <= 0) return null;
+    return { token: value.token, userId: value.userId };
+  } catch {
+    // A damaged entry must not block other accounts or removal of saved credentials.
+    return null;
+  }
 }
 
 /** Migrate a token saved under the pre-account-scoped key, if present, and remove the old entry. */
@@ -41,7 +46,7 @@ export function readMoodleToken(server: string, userId?: number): SavedToken | n
       const key = localStorage.key(index);
       if (!key || !key.startsWith(prefix)) continue;
       const value = parseStoredToken(localStorage.getItem(key));
-      if (value) return value;
+      if (value && key === buildKey(server, value.userId)) return value;
     }
     return migrateLegacyToken(server);
   } catch { return null; }

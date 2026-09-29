@@ -1,5 +1,7 @@
 const CACHE_NAME = "__EDUNOZA_CACHE_NAME__";
 const PRECACHE_ASSETS = /* __EDUNOZA_PRECACHE_ASSETS__ */ [];
+const ROOT_URL = new URL("./", self.registration.scope);
+const ASSET_URLS = new Set(PRECACHE_ASSETS.map((path) => new URL(path, ROOT_URL).href));
 
 async function cacheAppShell() {
   const cache = await caches.open(CACHE_NAME);
@@ -47,31 +49,25 @@ self.addEventListener("fetch", (event) => {
   if (request.method !== "GET") return;
   const url = new URL(request.url);
   if (url.origin !== self.location.origin) return;
+  if (!url.pathname.startsWith(ROOT_URL.pathname)) return;
+  if (request.headers.has("authorization")) return;
 
   if (request.mode === "navigate") {
-    const rootUrl = new URL("./", self.registration.scope);
     event.respondWith(
       fetch(request)
-        .then((response) => {
-          if (response.ok && url.pathname === rootUrl.pathname) {
-            const copy = response.clone();
-            void caches
-              .open(CACHE_NAME)
-              .then((cache) => cache.put(rootUrl, copy))
-              .catch(() => {});
-          }
-          return response;
-        })
         .catch(async () => {
           const cache = await caches.open(CACHE_NAME);
           return (
-            (await cache.match(rootUrl)) ??
-            (await cache.match(request, { ignoreSearch: true }))
+            (await cache.match(ROOT_URL)) ??
+            new Response("Offline application shell unavailable.", { status: 503 })
           );
         })
     );
     return;
   }
+
+  // Cache only versioned build assets; API responses and query URLs stay on the network.
+  if (!ASSET_URLS.has(url.href)) return;
 
   event.respondWith(
     caches.open(CACHE_NAME).then(async (cache) => {

@@ -47,19 +47,25 @@ export function useUnsavedChangesGuard(when: boolean, message = DEFAULT_MESSAGE,
             tx.retry();
             return;
           }
+          if (latest.current.beforeLeave) {
+            let saved = false;
+            try {
+              saved = await latest.current.beforeLeave();
+            } catch {
+              // A failed save still requires an explicit decision to discard changes.
+            }
+            if (saved) {
+              unblock();
+              tx.retry();
+              return;
+            }
+          }
           const shouldLeave = dialog
             ? await dialog.confirmLeave(message)
             : window.confirm(message);
 
           if (!shouldLeave) {
             return;
-          }
-          if (latest.current.beforeLeave) {
-            try {
-              await latest.current.beforeLeave();
-            } catch {
-              // Best-effort save; the user already confirmed leaving.
-            }
           }
           unblock();
           tx.retry();

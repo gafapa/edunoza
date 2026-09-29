@@ -30,7 +30,9 @@ for (const width of [390, 1440]) {
     await expect(page.getByText(/Conexión correcta con Ollama/)).toBeVisible();
     expect(localRequests).toEqual([]);
     await page.locator("summary").filter({ hasText: "Cómo conectar Ollama con Edunoza" }).click();
-    await expect(page.getByRole("link", { name: "la extensión Proxy (se abre en otra pestaña)", exact: true })).toBeVisible();
+    const proxyHelp = page.locator(".ai-ollama-help").getByRole("link", { name: "Comprobar e instalar la extensión", exact: true });
+    await expect(proxyHelp).toBeVisible();
+    await expect(proxyHelp).toHaveAttribute("href", "/config/proxy");
     expect(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth)).toBe(false);
     await page.screenshot({ path: `.impeccable/review/ollama-proxy-${width}.png`, fullPage: true });
   });
