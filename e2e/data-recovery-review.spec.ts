@@ -127,6 +127,23 @@ test("valid student autosave completes before navigation without discard dialog"
   await expect.poll(() => page.evaluate(async () => (await (await import(/* @vite-ignore */ "/src/shared/db/database.ts")).db.students.get("s"))?.comments)).toBe("Saved while navigating");
 });
 
+test("invalid student drafts stay protected when navigation cannot autosave", async ({ page }) => {
+  await seed(page);
+  await page.getByPlaceholder("Nombre", { exact: true }).fill("");
+  await page.locator('a[href="/management/schedule"]').first().click();
+  const dialog = page.getByRole("dialog", { name: "Cambios sin guardar" });
+  await expect(dialog).toBeVisible();
+  await page.getByRole("button", { name: "Quedarme", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(page).toHaveURL(/\/management\/students/);
+  await expect(page.getByPlaceholder("Nombre", { exact: true })).toHaveValue("");
+  await expect.poll(() => page.evaluate(async () => (await (await import(/* @vite-ignore */ "/src/shared/db/database.ts")).db.students.get("s"))?.firstName)).toBe("Alumno");
+  await page.locator('a[href="/management/schedule"]').first().click();
+  await expect(dialog).toBeVisible();
+  await page.getByRole("button", { name: "Salir sin guardar", exact: true }).click();
+  await expect(page).toHaveURL(/\/management\/schedule/);
+});
+
 test("interrupted class work can be restored and explicitly saved", async ({ page }) => {
   await seed(page);
   await page.goto("/today?classId=g&date=2026-09-08");

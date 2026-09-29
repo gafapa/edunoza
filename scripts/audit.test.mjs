@@ -45,3 +45,12 @@ test("audit accepts a complete clean report and rejects an unreviewed advisory",
   report.vulnerabilities.example = { via: [{ url: "https://example.com/unreviewed" }] };
   assert.equal(auditResult({ status: 1, stdout: JSON.stringify(report) }).exitCode, 1);
 });
+
+test("audit rejects the previously exempt React Router advisory if it returns", () => {
+  const report = {
+    auditReportVersion: 2,
+    vulnerabilities: { "react-router": { via: [{ url: "https://github.com/advisories/GHSA-qwww-vcr4-c8h2" }] } },
+    metadata: { vulnerabilities: { total: 1 } }
+  };
+  assert.equal(auditResult({ status: 1, stdout: JSON.stringify(report) }).exitCode, 1);
+});

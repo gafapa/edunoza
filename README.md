@@ -4,7 +4,7 @@ Edunoza is an offline-first teacher notebook packaged as a PWA. It is built for 
 
 All academic data is stored locally in the browser with IndexedDB. AI features connect to the selected provider from the browser (through the Proxy extension for Ollama); Edunoza does not operate an AI proxy server or receive those requests.
 
-The optional [read-only Moodle connection](docs/moodle-integration.md) associates existing local groups, students and tasks with Moodle information through the Proxy extension. Reviewed updates and supported assignment grades are applied locally; Edunoza does not modify Moodle. Tokens remain in memory, and disconnecting preserves academic work and saved associations.
+The optional [read-only Moodle connection](docs/moodle-integration.md) associates existing local groups, students and tasks with Moodle information through the Proxy extension. Reviewed updates and supported assignment grades are applied locally; Edunoza does not modify Moodle. Tokens remain in memory unless the user explicitly saves a validated token on this device. Saved tokens use unencrypted localStorage, are excluded from academic backups, and can be deleted separately. Disconnecting preserves academic work and saved associations.
 
 ## Current Scope
 
@@ -253,7 +253,7 @@ The expected result is:
 - ESLint passes without errors or warnings.
 - Every Vitest suite passes.
 - Production build succeeds.
-- The dependency audit passes with one reviewed React Router advisory exception. The affected RSC/server-action path is not enabled in this client-only SPA.
+- The dependency audit passes with no known vulnerabilities and no advisory exceptions.
 
 The latest production browser QA covered:
 
@@ -265,7 +265,7 @@ The latest production browser QA covered:
 - Console health without relevant errors or warnings.
 - Tutor workflows at 390 × 844 without document overflow, with accessible tab/tabpanel semantics.
 
-GitHub Actions runs the same `npm run verify` pipeline on pushes to `main` and on pull requests.
+GitHub Actions runs `npm run verify`, the test deployment build, and the complete Chromium browser suite on pushes to `main`, pull requests, and manual dispatch. See [CI and security maintenance](docs/ci-and-security.md) for runner costs, diagnostics, and dependency updates.
 
 ## Deployment Environments
 

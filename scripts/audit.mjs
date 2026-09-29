@@ -1,11 +1,7 @@
 import { spawnSync } from "node:child_process";
 
-const allowedAdvisories = new Map([
-  [
-    "https://github.com/advisories/GHSA-qwww-vcr4-c8h2",
-    "The application uses React Router only as a client-side SPA and does not enable RSC actions or server actions."
-  ]
-]);
+// No advisory exceptions are currently needed by the locked dependency versions.
+const allowedAdvisories = new Map();
 
 const npmCliPath = process.env.npm_execpath;
 if (!npmCliPath) {

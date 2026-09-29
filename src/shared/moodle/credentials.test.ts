@@ -3,7 +3,13 @@ import { readMoodleToken, removeMoodleToken, saveMoodleToken } from "./credentia
 
 beforeEach(() => {
   const values = new Map<string, string>();
-  vi.stubGlobal("localStorage", { getItem: (key: string) => values.get(key) ?? null, setItem: (key: string, value: string) => values.set(key, value), removeItem: (key: string) => values.delete(key) });
+  vi.stubGlobal("localStorage", {
+    getItem: (key: string) => values.get(key) ?? null,
+    setItem: (key: string, value: string) => values.set(key, value),
+    removeItem: (key: string) => values.delete(key),
+    key: (index: number) => [...values.keys()][index] ?? null,
+    get length() { return values.size; }
+  });
 });
 afterEach(() => vi.unstubAllGlobals());
 
@@ -51,4 +57,21 @@ it("reports blocked storage without claiming credentials were saved", () => {
   expect(saveMoodleToken("https://school.example/", "token123", 9)).toBe(false);
   expect(readMoodleToken("https://school.example/")).toBeNull();
   expect(removeMoodleToken("https://school.example/")).toBe(false);
+});
+
+it("skips damaged or mismatched account entries while recovering a valid token", () => {
+  const prefix = "edunoza.moodle.token:https://school.example/aula/";
+  localStorage.setItem(`${prefix}::8`, "{broken");
+  localStorage.setItem(`${prefix}::10`, JSON.stringify({ token: "wrongAccount", userId: 11 }));
+  expect(saveMoodleToken("https://school.example/aula/", "validToken", 9)).toBe(true);
+  expect(readMoodleToken("https://school.example/aula/")).toEqual({ token: "validToken", userId: 9 });
+  expect(readMoodleToken("https://school.example/aula/", 10)).toBeNull();
+});
+
+it("removes an account token even when its legacy entry is damaged", () => {
+  const server = "https://school.example/aula/";
+  expect(saveMoodleToken(server, "token123", 9)).toBe(true);
+  localStorage.setItem(`edunoza.moodle.token:${server}`, "{broken");
+  expect(removeMoodleToken(server, 9)).toBe(true);
+  expect(readMoodleToken(server, 9)).toBeNull();
 });
