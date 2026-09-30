@@ -174,9 +174,13 @@ export function ManagementPreferencesPage() {
               className="btn danger"
               type="button"
               onClick={() => {
-                persistAppLockConfig(null);
-                setAppLockEnabled(false);
-                setSecurityNotice("Bloqueo local desactivado.");
+                try {
+                  persistAppLockConfig(null);
+                  setAppLockEnabled(false);
+                  setSecurityNotice("Bloqueo local desactivado.");
+                } catch (error) {
+                  setSecurityNotice(error instanceof Error ? error.message : "No se pudo desactivar el bloqueo.");
+                }
               }}
             >
               Desactivar

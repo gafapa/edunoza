@@ -4,6 +4,23 @@ import {
   createSlice,
   type PayloadAction
 } from "@reduxjs/toolkit";
+import { getBrowserStorage } from "../shared/storage/browserStorage";
+
+export const PREFERENCE_STORAGE_EVENT = "edunoza:preference-storage";
+let preferenceStorageUnavailable = false;
+export function hasPreferenceStorageError(): boolean { return preferenceStorageUnavailable; }
+function reportPreferenceStorageError(): void {
+  preferenceStorageUnavailable = true;
+  if (typeof window !== "undefined") window.dispatchEvent(new Event(PREFERENCE_STORAGE_EVENT));
+}
+function readPreference(key: string): string | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const storage = getBrowserStorage("local");
+    if (!storage) { reportPreferenceStorageError(); return null; }
+    return storage.getItem(key);
+  } catch { reportPreferenceStorageError(); return null; }
+}
 
 export type StudentSortBy = "lastName" | "firstName";
 export type StudentNameFormat = "firstLast" | "lastFirst";
@@ -35,33 +52,39 @@ type AppState = {
 
 function readStudentSortBy(): StudentSortBy {
   if (typeof window === "undefined") return DEFAULT_APP_PREFERENCES.studentSortBy;
-  const v = window.localStorage.getItem("student_sort_by");
+  const v = readPreference("student_sort_by");
   return v === "firstName" ? "firstName" : DEFAULT_APP_PREFERENCES.studentSortBy;
 }
 
 function readStudentNameFormat(): StudentNameFormat {
   if (typeof window === "undefined") return DEFAULT_APP_PREFERENCES.studentNameFormat;
-  const v = window.localStorage.getItem("student_name_format");
+  const v = readPreference("student_name_format");
   return v === "lastFirst" ? "lastFirst" : DEFAULT_APP_PREFERENCES.studentNameFormat;
 }
 
 function readWeekStartsOn(): WeekStartsOn {
   if (typeof window === "undefined") return DEFAULT_APP_PREFERENCES.weekStartsOn;
-  const v = window.localStorage.getItem("week_starts_on");
+  const v = readPreference("week_starts_on");
   return v === "sunday" ? "sunday" : DEFAULT_APP_PREFERENCES.weekStartsOn;
 }
 
 function readNotSubmittedGradePolicy(): NotSubmittedGradePolicy {
   if (typeof window === "undefined") return DEFAULT_APP_PREFERENCES.notSubmittedGradePolicy;
-  return window.localStorage.getItem("not_submitted_grade_policy") === "zero" ? "zero" : "exclude";
+  return readPreference("not_submitted_grade_policy") === "zero" ? "zero" : "exclude";
 }
 
 function writePreferencesToLocalStorage(preferences: AppPreferences): void {
   if (typeof window === "undefined") return;
-  window.localStorage.setItem("student_sort_by", preferences.studentSortBy);
-  window.localStorage.setItem("student_name_format", preferences.studentNameFormat);
-  window.localStorage.setItem("week_starts_on", preferences.weekStartsOn);
-  window.localStorage.setItem("not_submitted_grade_policy", preferences.notSubmittedGradePolicy);
+  try {
+    const storage = getBrowserStorage("local");
+    if (!storage) { reportPreferenceStorageError(); return; }
+    storage.setItem("student_sort_by", preferences.studentSortBy);
+    storage.setItem("student_name_format", preferences.studentNameFormat);
+    storage.setItem("week_starts_on", preferences.weekStartsOn);
+    storage.setItem("not_submitted_grade_policy", preferences.notSubmittedGradePolicy);
+    preferenceStorageUnavailable = false;
+    window.dispatchEvent(new Event(PREFERENCE_STORAGE_EVENT));
+  } catch { reportPreferenceStorageError(); }
 }
 
 const initialState: AppState = {

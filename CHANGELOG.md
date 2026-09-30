@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Review corrections
+
+- Guard local import, reset, and demo loading against edits made during safety-backup encryption, using one protected snapshot and an atomic comparison.
+- Move backup serialization, validation, and replacement into a shared service; preserve schema 6 payloads and optional report and behavior history.
+- Recover preference and draft storage failures without crashing, and show a retry screen when local lock storage cannot be checked.
+- Enforce attachment quota and owner checks in the insertion transaction, with an additive IndexedDB size index.
+- Keep keyboard focus inside the active modal, make its background inert, and restore focus when stacked dialogs close.
+- Reduce PDF text measurement work and cache repeated measurements.
+- Show encrypted Nextcloud transfer size before upload and offer local export for oversized snapshots.
+- Upgrade TypeScript to 6.0.3 and Vitest with coverage to 5.0.2; keep Node types on the Node 24 runtime line.
+- Add built-application browser coverage in Chromium, Firefox, and WebKit, enforce global and recovery-specific coverage thresholds, and check CSP consistency across build and hosting configuration.
+- Extract public, feedback/recovery, and workspace styles while preserving their cascade order.
+
 ### Changed
 
 - Removed redundant visible introductions from Agenda, Classroom and Search while retaining accessible page headings. Moved initial setup to a compact global status-bar entry with live progress and an on-demand guide.

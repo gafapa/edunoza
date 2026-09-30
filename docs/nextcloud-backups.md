@@ -38,4 +38,6 @@ Announce progress and verification results and disable competing operations whil
 
 Edunoza limits encrypted files and responses to 10 MiB. Proxy defaults to 1 MiB requests and 10 MiB responses; users may need to increase the request limit to the required size. Its timeout can be raised to 120 seconds. No public-network CORS change is needed on Edunoza because Proxy performs the HTTP request.
 
+The creation panel computes the compact encrypted envelope size before upload, including UTF-8 encoding, the AES-GCM authentication tag, and base64 expansion. It disables remote upload when the current snapshot exceeds 10 MiB and links to local export, which preserves all attachments. The 20 MiB raw attachment quota is independent of the remote transfer limit. Upload still checks the final payload because another tab may change data after the estimate.
+
 Automated tests use synthetic database records and a simulated bridge/WebDAV server. They do not establish that a real BoxAbalar account permits this workflow. Live authentication requires the account owner's credentials entered locally in the application.

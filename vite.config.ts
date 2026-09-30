@@ -1,3 +1,4 @@
+import { contentSecurityPolicy } from "./scripts/security-policy.mjs";
 import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import type { Plugin, ResolvedConfig } from "vite";
@@ -94,30 +95,13 @@ function normalizeBasePath(rawBase?: string): string {
 }
 
 function contentSecurityPolicyPlugin(isDevelopment: boolean): Plugin {
-  const aiConnectSources = [
-    "https://api.openai.com",
-    "https://openrouter.ai",
-    "https://api.anthropic.com",
-    "http://localhost:*",
-    "http://127.0.0.1:*",
-    "https://localhost:*",
-    "https://127.0.0.1:*"
-  ];
-  const connectSources = [
-    "'self'",
-    ...aiConnectSources,
-    ...(isDevelopment ? ["ws://127.0.0.1:*", "ws://localhost:*"] : [])
-  ].join(" ");
-  const styleSources = isDevelopment ? "'self' 'unsafe-inline'" : "'self'";
-
   return {
     name: "edunoza-content-security-policy",
     transformIndexHtml: {
       order: "pre",
       handler(html) {
         return html
-          .replace("__EDUNOZA_CONNECT_SRC__", connectSources)
-          .replace("__EDUNOZA_STYLE_SRC__", styleSources);
+          .replace("__EDUNOZA_CONTENT_SECURITY_POLICY__", contentSecurityPolicy({ development: isDevelopment }));
       }
     }
   };

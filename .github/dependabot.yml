@@ -8,8 +8,14 @@ updates:
     groups:
       compatible-updates:
         update-types: [minor, patch]
+      test-toolchain:
+        patterns: ["vitest", "@vitest/*"]
+        update-types: [major]
     ignore:
-      - dependency-name: "*"
+      # Keep types aligned with the selected Node runtime and compiler support in ESLint.
+      - dependency-name: "@types/node"
+        update-types: [version-update:semver-major]
+      - dependency-name: "typescript"
         update-types: [version-update:semver-major]
   - package-ecosystem: github-actions
     directory: /

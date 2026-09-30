@@ -1,3 +1,5 @@
+import { getBrowserStorage } from "../storage/browserStorage";
+
 export const APP_LOCK_STORAGE_KEY = "profeplus_app_lock";
 export const APP_LOCK_CHANGED_EVENT = "profeplus:app-lock-changed";
 export const APP_LOCK_NOW_EVENT = "profeplus:lock-now";
@@ -107,8 +109,15 @@ export async function verifyAppLockPassphrase(
   return difference === 0;
 }
 
-export function readAppLockConfig(storage: Storage = window.localStorage): AppLockConfig | null {
-  const rawValue = storage.getItem(APP_LOCK_STORAGE_KEY);
+export function readAppLockConfig(storage?: Storage): AppLockConfig | null {
+  let rawValue: string | null;
+  try {
+    const target = storage ?? getBrowserStorage("local");
+    if (!target) throw new Error("Storage unavailable");
+    rawValue = target.getItem(APP_LOCK_STORAGE_KEY);
+  } catch {
+    throw new Error("No se puede comprobar el bloqueo local. Permite el almacenamiento de este sitio y vuelve a intentarlo.");
+  }
   if (!rawValue) return null;
   try {
     const value = JSON.parse(rawValue) as Partial<AppLockConfig>;
@@ -119,7 +128,13 @@ export function readAppLockConfig(storage: Storage = window.localStorage): AppLo
 }
 
 export function persistAppLockConfig(config: AppLockConfig | null): void {
-  if (config) window.localStorage.setItem(APP_LOCK_STORAGE_KEY, JSON.stringify(config));
-  else window.localStorage.removeItem(APP_LOCK_STORAGE_KEY);
+  try {
+    const storage = getBrowserStorage("local");
+    if (!storage) throw new Error("Storage unavailable");
+    if (config) storage.setItem(APP_LOCK_STORAGE_KEY, JSON.stringify(config));
+    else storage.removeItem(APP_LOCK_STORAGE_KEY);
+  } catch {
+    throw new Error("No se pudo guardar el bloqueo local. Revisa los permisos de almacenamiento del navegador.");
+  }
   window.dispatchEvent(new Event(APP_LOCK_CHANGED_EVENT));
 }

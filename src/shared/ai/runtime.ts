@@ -1,3 +1,4 @@
+import { getBrowserStorage } from "../storage/browserStorage";
 import { proxyMessage, type ProxyResponse } from "../backup/nextcloud";
 
 export type AiProviderId = "openrouter" | "openai" | "anthropic" | "ollama" | "lmstudio";
@@ -249,9 +250,9 @@ export function normalizeAiConfiguration(value: unknown): StoredAiConfiguration 
   };
 }
 
-function readJsonStorage(storage: Storage, key: string): unknown {
+function readJsonStorage(storage: Storage | undefined, key: string): unknown {
   try {
-    const value = storage.getItem(key);
+    const value = storage?.getItem(key);
     return value ? JSON.parse(value) : null;
   } catch {
     return null;
@@ -271,9 +272,9 @@ function normalizeStoredCredentials(value: unknown): StoredCredentials {
 
 function readStoredConfiguration(): StoredAiConfiguration {
   if (typeof window === "undefined") return memoryConfiguration;
-  const current = readJsonStorage(window.localStorage, CONFIGURATION_STORAGE_KEY);
+  const current = readJsonStorage(getBrowserStorage("local"), CONFIGURATION_STORAGE_KEY);
   if (current) return normalizeAiConfiguration(current);
-  const legacy = readJsonStorage(window.localStorage, LEGACY_CONFIGURATION_STORAGE_KEY);
+  const legacy = readJsonStorage(getBrowserStorage("local"), LEGACY_CONFIGURATION_STORAGE_KEY);
   return legacy ? normalizeAiConfiguration(legacy) : memoryConfiguration;
 }
 
@@ -291,7 +292,7 @@ function writeStoredConfiguration(configuration: StoredAiConfiguration): void {
 function readCredentials(storageKind: "session" | "device"): StoredCredentials {
   const fallback = storageKind === "session" ? memorySessionCredentials : memoryDeviceCredentials;
   if (typeof window === "undefined") return fallback;
-  const storage = storageKind === "session" ? window.sessionStorage : window.localStorage;
+  const storage = getBrowserStorage(storageKind === "session" ? "session" : "local");
   const key = storageKind === "session"
     ? SESSION_CREDENTIALS_STORAGE_KEY
     : DEVICE_CREDENTIALS_STORAGE_KEY;
@@ -302,11 +303,12 @@ function writeCredentials(storageKind: "session" | "device", credentials: Stored
   if (storageKind === "session") memorySessionCredentials = credentials;
   else memoryDeviceCredentials = credentials;
   if (typeof window === "undefined") return false;
-  const storage = storageKind === "session" ? window.sessionStorage : window.localStorage;
+  const storage = getBrowserStorage(storageKind === "session" ? "session" : "local");
   const key = storageKind === "session"
     ? SESSION_CREDENTIALS_STORAGE_KEY
     : DEVICE_CREDENTIALS_STORAGE_KEY;
   try {
+    if (!storage) return false;
     if (Object.keys(credentials).length > 0) storage.setItem(key, JSON.stringify(credentials));
     else storage.removeItem(key);
     return true;

@@ -39,11 +39,14 @@ jobs:
       - name: Build test deployment
         run: npm run build:test
 
-      - name: Install Chromium
-        run: npx playwright install --with-deps chromium
+      - name: Install browsers
+        run: npx playwright install --with-deps chromium firefox webkit
 
       - name: Run browser tests
         run: npm run test:e2e
+
+      - name: Run built application browser tests
+        run: npm run test:e2e:production
 
       - name: Upload failure diagnostics
         if: failure()

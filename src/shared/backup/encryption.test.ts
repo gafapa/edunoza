@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   decryptBackupPayload,
   encryptBackupPayload,
+  estimateEncryptedBackupBytes,
   isEncryptedBackupEnvelope
 } from "./encryption";
 
@@ -13,6 +14,7 @@ describe("encrypted backups", () => {
     expect(encrypted.app).toBe("Edunoza");
     expect(isEncryptedBackupEnvelope(encrypted)).toBe(true);
     expect(encrypted.ciphertext).not.toContain("Ana");
+    expect(estimateEncryptedBackupBytes(payload)).toBe(new TextEncoder().encode(JSON.stringify(encrypted)).length);
     await expect(decryptBackupPayload(encrypted, "correct horse battery staple")).resolves.toEqual(payload);
   });
 
