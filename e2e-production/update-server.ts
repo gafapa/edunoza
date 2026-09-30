@@ -27,7 +27,6 @@ export async function startUpdateServer() {
     url: `http://127.0.0.1:${address.port}`,
     update: () => { updated = true; },
     close: async () => {
-      server.httpServer.closeAllConnections();
       await new Promise<void>((resolve, reject) => server.httpServer.close(error => error ? reject(error) : resolve()));
     }
   };
