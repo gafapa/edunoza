@@ -696,3 +696,78 @@
 }
 .ai-report-editor > textarea { resize: vertical; }
 .ai-report-editor > p { margin: 0; overflow-wrap: anywhere; }
+.students-panel {
+  container: today-students / inline-size;
+  min-width: 0;
+}
+
+.today-student-row.exception-flow > * {
+  min-width: 0;
+}
+
+.today-student-name-cell strong {
+  overflow-wrap: anywhere;
+}
+
+.today-behavior-taps {
+  grid-column: 1 / -1;
+  flex-wrap: wrap;
+  gap: 8px 16px;
+}
+
+.today-behavior-group {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 44px 44px;
+  align-items: center;
+  gap: 6px;
+  flex: 1 1 220px;
+  min-width: 0;
+}
+
+.today-behavior-label {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+
+.today-behavior-count {
+  min-width: 1.5em;
+  color: inherit;
+  font-size: 0.9rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.today-behavior-group.positive { color: #1e7d3a; }
+.today-behavior-group.negative { color: #a02a2a; }
+
+.today-behavior-tap {
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 8px;
+}
+
+.today-behavior-tap:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.today-behavior-tap:focus-visible {
+  outline: 2px solid #1f4b99;
+  outline-offset: 2px;
+}
+
+@container today-students (max-width: 620px) {
+  .today-student-row.exception-flow {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 8px;
+    padding: 10px;
+  }
+
+  .today-student-row-header.exception-flow {
+    display: none;
+  }
+}

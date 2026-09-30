@@ -2,6 +2,12 @@
 
 ## Unreleased
 
+### Behavior controls
+
+- Keep positive and negative behavior controls in a wrapping full-width row, with responsive attendance rows based on panel width.
+- Remove the latest positive or negative for a student in the selected class/day, save immediately, and disable removal at zero. Unrelated students and dates remain intact.
+- Verify narrow, tablet, and desktop layouts and persisted removal in Chromium, Firefox, and WebKit on GitHub; retain synthetic layout previews for three days.
+
 ### Review corrections
 
 - Guard local import, reset, and demo loading against edits made during safety-backup encryption, using one protected snapshot and an atomic comparison.

@@ -71,3 +71,12 @@ jobs:
             test-results/
           if-no-files-found: ignore
           retention-days: 3
+
+      - name: Upload behavior layout previews
+        if: always()
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: behavior-layout-${{ github.run_id }}
+          path: test-results/**/behavior-layout.png
+          if-no-files-found: ignore
+          retention-days: 3
