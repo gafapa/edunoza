@@ -56,6 +56,17 @@ test("accepting a worker update reloads the built application and retains local 
     await page.evaluate(async () => { await navigator.serviceWorker.ready; });
     await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
     await page.evaluate(() => localStorage.setItem("review-update-marker", "kept"));
+    page.on("console", message => {
+      if (message.text().startsWith("Worker update")) console.info(message.text());
+    });
+    await page.evaluate(async () => {
+      const registration = (await navigator.serviceWorker.getRegistration())!;
+      registration.addEventListener("updatefound", () => {
+        const worker = registration.installing;
+        console.info("Worker update found", worker?.state);
+        worker?.addEventListener("statechange", () => console.info("Worker update state", worker.state));
+      });
+    });
     updateServer.update();
     const prompt = page.waitForEvent("dialog");
     await page.evaluate(async () => { await (await navigator.serviceWorker.getRegistration())!.update(); });

@@ -13,7 +13,9 @@ export async function startUpdateServer() {
           if (request.url === "/sw.js") {
             response.setHeader("Content-Type", "application/javascript");
             response.setHeader("Cache-Control", "no-store");
-            response.end(readFileSync("dist/sw.js", "utf8") + (updated ? "\n// Synthetic browser update.\n" : ""));
+            const workerScript = readFileSync("dist/sw.js", "utf8");
+            console.info("Worker update fixture served", { updated });
+            response.end(updated ? workerScript.replace("const CACHE_NAME =", 'const CACHE_NAME = "edunoza-review-update-" +') : workerScript);
             return;
           }
           next();

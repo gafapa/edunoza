@@ -5,6 +5,11 @@ on:
     branches: ["main"]
   pull_request:
   workflow_dispatch:
+    inputs:
+      production_test_grep:
+        description: "Optional production browser test filter; empty runs every browser suite"
+        type: string
+        default: ""
 
 concurrency:
   group: ci-${{ github.event.pull_request.number || github.ref }}
@@ -43,10 +48,18 @@ jobs:
         run: npx playwright install --with-deps chromium firefox webkit
 
       - name: Run browser tests
+        if: github.event_name != 'workflow_dispatch' || inputs.production_test_grep == ''
         run: npm run test:e2e
 
       - name: Run built application browser tests
+        if: github.event_name != 'workflow_dispatch' || inputs.production_test_grep == ''
         run: npm run test:e2e:production
+
+      - name: Run selected built application browser tests
+        if: github.event_name == 'workflow_dispatch' && inputs.production_test_grep != ''
+        env:
+          PRODUCTION_TEST_GREP: ${{ inputs.production_test_grep }}
+        run: npm run test:e2e:production -- --grep "$PRODUCTION_TEST_GREP"
 
       - name: Upload failure diagnostics
         if: failure()
