@@ -9,11 +9,15 @@ import { store } from "./app/store";
 import { AppErrorBoundary } from "./shared/ui/AppErrorBoundary";
 import { UnsavedChangesDialogProvider } from "./shared/ui/UnsavedChangesDialog";
 import "./styles.css";
+import "./styles/public.css";
+import "./styles/feedback-recovery.css";
+import "./styles/workspace.css";
 import "./shared/ui/compactForms.css";
 
 function registerServiceWorker(): void {
   if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;
   let reloading = false;
+  let hadController = Boolean(navigator.serviceWorker.controller);
   let updatePromptShown = false;
   const offerUpdate = (worker: ServiceWorker): void => {
     if (!navigator.serviceWorker.controller || updatePromptShown) return;
@@ -26,6 +30,8 @@ function registerServiceWorker(): void {
     }
   };
   navigator.serviceWorker.addEventListener("controllerchange", () => {
+    // The first claim already uses this build; reload only when a worker replaces it.
+    if (!hadController) { hadController = true; return; }
     if (reloading) return;
     reloading = true;
     window.location.reload();

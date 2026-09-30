@@ -26,6 +26,17 @@ export type EncryptedBackupEnvelope = {
   ciphertext: string;
 };
 
+/** Exact UTF-8 transfer size of the compact encrypted envelope, without deriving a key. */
+export function estimateEncryptedBackupBytes(payload: unknown): number {
+  const plaintextBytes = new TextEncoder().encode(JSON.stringify(payload)).length;
+  const envelope: EncryptedBackupEnvelope = {
+    app: PRODUCT_NAME, format: "encrypted-backup", version: 1,
+    encryption: { algorithm: ALGORITHM, kdf: KDF, hash: HASH, iterations: ITERATIONS, salt: "A".repeat(24), iv: "A".repeat(16) },
+    ciphertext: ""
+  };
+  return new TextEncoder().encode(JSON.stringify(envelope)).length + 4 * Math.ceil((plaintextBytes + 16) / 3);
+}
+
 function bytesToBase64(bytes: Uint8Array): string {
   let binary = "";
   for (let offset = 0; offset < bytes.length; offset += 0x8000) {

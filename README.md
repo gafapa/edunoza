@@ -27,7 +27,7 @@ The optional [read-only Moodle connection](docs/moodle-integration.md) associate
 - Accent-insensitive global search finds students, tasks, assessments, follow-ups, family contacts, and local resources, then opens the owning workspace with its academic context restored.
 - Reusable units, tasks, rubrics, and checklists, plus accessible `Move to…` controls wherever drag and drop is offered.
 - Reports module with prerequisite-aware empty states, date-range filtering, printable HTML reports, CSV exports, AI-ready datasets, and an explicit local-versus-AI output choice.
-- Local database operations for seeded test data, encrypted JSON backup export/import, integrity checks, and data reset. Destructive replacements create an encrypted safety backup and require explicit confirmation.
+- Local database operations for seeded test data, encrypted JSON backup export/import, integrity checks, and data reset. Destructive replacements create an encrypted safety backup and require explicit confirmation. Import, reset, and demo loading compare the same backed-up snapshot inside the replacement transaction and abort if another writer changed the data.
 - Selective encrypted handoff packages for chosen students and support groups, with conflict preview and non-destructive merge semantics.
 - Privacy-preserving product analytics record only fixed event names through same-origin, bodyless requests. No academic content, search text, record IDs, cookies, or persistent user identifiers are collected.
 - An in-app feedback composer lets teachers review and share a suggestion, problem, or question through the browser share sheet or clipboard without sending academic data automatically.
@@ -59,12 +59,12 @@ The v1-to-v2 migration preserves existing manual assessments. Legacy text period
 
 ## Stack
 
-- React 19 + TypeScript 5.9
+- React 19 + TypeScript 6
 - Vite 8 with a native service worker and web app manifest
 - Redux Toolkit 2
 - Dexie 4 with IndexedDB
 - React Router 7
-- Vitest 4
+- Vitest 5
 
 ## Requirements
 
@@ -96,10 +96,12 @@ npm run test:coverage # Run Vitest and write the full source coverage report
 npm run lint       # Run ESLint, including React hook checks
 npm run typecheck  # Run TypeScript project checks
 npm run audit      # Audit dependencies against the reviewed advisory policy
-npm run verify     # Run lint, typecheck, tests, build, and dependency audit
+npm run test:e2e    # Run the development Chromium workflow suite
+npm run test:e2e:production # Test dist/ in Chromium, Firefox, and WebKit
+npm run verify     # Run lint, typecheck, coverage, security tests, build, and dependency audit
 ```
 
-Use `npm run verify` before publishing or handing off a larger change.
+Use `npm run verify` before publishing or handing off a larger change. Install browser binaries with `npx playwright install chromium firefox webkit`, then run `npm run test:e2e` and `npm run test:e2e:production`. The production suite consumes the build in `dist/` and covers offline loading, encrypted downloads, native report documents, and strict CSP execution.
 
 ## Data Model And Backups
 
@@ -123,7 +125,7 @@ Classroom layouts are course-scoped and included in full encrypted backups. Dele
 
 Selective handoff packages contain only the selected students, their course references, tutorial follow-ups, structured family contacts, and relevant support-group memberships. They never include attendance, gradebook data, or resource attachments. Import first validates references and IDs, then shows creates, unchanged rows, and conflicts. Any conflicting ID blocks the complete merge; accepted merges use insert-only operations and never overwrite local rows.
 
-Database payloads are intentionally not backward compatible. Only payloads produced by the current schema are accepted, and every current table must be present. This keeps import behavior deterministic and prevents inferred or partially scoped academic records.
+Backup payload schema 7 includes Moodle metadata, AI report history, and classroom behavior records. Schema 6 backups remain supported: absent Moodle tables are initialized empty. AI report history and classroom behavior tables may also be absent in either supported payload version and are initialized empty. The validator rejects unsupported schema versions, missing required tables, malformed rows, and broken references. The IndexedDB version is independently at 10; its latest additive migration indexes attachment sizes without changing backup rows.
 
 ## Security Model
 

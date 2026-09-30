@@ -9,6 +9,7 @@ import {
   createLinkResource,
   formatFileSize
 } from "./resources";
+import { getTotalResourceBytes, saveResourceAttachment } from "./storage";
 
 const ACCEPTED_FILE_TYPES = [
   ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
@@ -51,12 +52,12 @@ export function ResourceManager({ ownerType, ownerId, heading = "Recursos y evid
   const [isSaving, setIsSaving] = useState(false);
 
   const loadResources = useCallback(async (): Promise<void> => {
-    const [ownerResources, allResources] = await Promise.all([
+    const [ownerResources, totalBytes] = await Promise.all([
       db.resourceAttachments.where("[ownerType+ownerId]").equals([ownerType, ownerId]).toArray(),
-      db.resourceAttachments.toArray()
+      getTotalResourceBytes()
     ]);
     setResources(sortResources(ownerResources));
-    setTotalFileBytes(allResources.reduce((total, item) => total + (item.kind === "file" ? item.sizeBytes ?? 0 : 0), 0));
+    setTotalFileBytes(totalBytes);
   }, [ownerId, ownerType]);
 
   useEffect(() => {
@@ -92,9 +93,9 @@ export function ResourceManager({ ownerType, ownerId, heading = "Recursos y evid
       const resource = kind === "link"
         ? createLinkResource(ownerType, ownerId, title, url)
         : file
-          ? await createFileResource(ownerType, ownerId, title, file, totalFileBytes)
+          ? await createFileResource(ownerType, ownerId, title, file, 0)
           : (() => { throw new Error("Selecciona un archivo."); })();
-      await db.resourceAttachments.add(resource);
+      await saveResourceAttachment(resource);
       resetForm();
       await loadResources();
       setNotice(kind === "link" ? "Enlace guardado." : "Archivo guardado localmente.");

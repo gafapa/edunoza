@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
-import { createNextcloudClient, proxyMessage, type RemoteBackup } from "../../shared/backup/nextcloud";
+import { createNextcloudClient, proxyMessage, MAX_NEXTCLOUD_BACKUP_BYTES, type RemoteBackup } from "../../shared/backup/nextcloud";
+import { liveQuery } from "dexie";
+import { buildCurrentPayload } from "../../shared/backup/database";
+import { estimateEncryptedBackupBytes } from "../../shared/backup/encryption";
+import { formatFileSize } from "../../shared/resources/resources";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
 import { Modal } from "../../shared/ui/Modal";
 import { useManagement } from "../management/ManagementContext";
@@ -30,6 +34,15 @@ export function NextcloudBackupPage() {
   const [pendingRestore, setPendingRestore] = useState<{ payload: unknown; name: string; exportedAt: string; rows: number; groups: number; students: number } | null>(null);
   const [restoreConfirmed, setRestoreConfirmed] = useState(false);
   const [preventiveName, setPreventiveName] = useState("");
+  const [backupBytes, setBackupBytes] = useState<number | null>(null);
+  const [sizeError, setSizeError] = useState("");
+  useEffect(() => {
+    const subscription = liveQuery(async () => estimateEncryptedBackupBytes(await buildCurrentPayload())).subscribe({
+      next: value => { setBackupBytes(value); setSizeError(""); },
+      error: () => { setBackupBytes(null); setSizeError("No se pudo calcular el tamaño de la copia. Puedes descargar una copia local desde Base de datos."); }
+    });
+    return () => subscription.unsubscribe();
+  }, []);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
   useUnsavedChangesGuard(busy || pendingRestore !== null, "Hay una operación con Nextcloud pendiente. Si sales, se descartará la revisión y una subida podría continuar sin que podamos verificarla. ¿Quieres salir?");
@@ -62,7 +75,7 @@ export function NextcloudBackupPage() {
   });
   const upload = () => run(async (signal) => {
     if (encryptionPassword !== confirmation) throw new Error("Las contraseñas de cifrado no coinciden.");
-    const { buildCurrentPayload, validateDatabasePayload } = await import("../management/ManagementDatabasePage");
+    const { buildCurrentPayload, validateDatabasePayload } = await import("../../shared/backup/database");
     const backup = await client(signal).upload(await buildCurrentPayload(), encryptionPassword, validateDatabasePayload, setStatus);
     setBackups((previous) => [backup, ...previous.filter((item) => item.name !== backup.name)]);
     setSelected(backup.name); setListed(true); setEncryptionPassword(""); setConfirmation("");
@@ -71,7 +84,7 @@ export function NextcloudBackupPage() {
   const prepareRestore = () => run(async (signal) => {
     const backup = backups.find((item) => item.name === selected);
     if (!backup) throw new Error("Selecciona una copia de la lista.");
-    const { validateDatabasePayload } = await import("../management/ManagementDatabasePage");
+    const { validateDatabasePayload } = await import("../../shared/backup/database");
     setStatus("Descargando y validando la copia antes de restaurar…");
     const payload = await client(signal).retrieve(backup, restorePassword, validateDatabasePayload);
     signal.throwIfAborted();
@@ -83,7 +96,7 @@ export function NextcloudBackupPage() {
   });
   const confirmRestore = () => run(async (signal) => {
     if (!pendingRestore || !restoreConfirmed) throw new Error("Confirma que deseas sustituir los datos actuales.");
-    const { buildCurrentPayload, validateDatabasePayload, restoreDatabasePayload } = await import("../management/ManagementDatabasePage");
+    const { buildCurrentPayload, validateDatabasePayload, restoreDatabasePayload } = await import("../../shared/backup/database");
     const current = await buildCurrentPayload();
     setStatus("Creando una copia preventiva de los datos actuales en Nextcloud…");
     const preventive = await client(signal).upload(current, restorePassword, validateDatabasePayload,
@@ -129,10 +142,12 @@ export function NextcloudBackupPage() {
     <fieldset disabled={busy} className="nextcloud-fields">
       <legend>Crear una copia</legend>
       <p>Se cifra en este dispositivo antes de enviarla a la carpeta Edunoza. Guarda la contraseña en un lugar seguro: no podemos recuperarla.</p>
+      <p role="status">{backupBytes === null ? sizeError || "Calculando el tamaño de la copia…" : `Tamaño cifrado: ${formatFileSize(backupBytes)}. Límite de Nextcloud y Proxy: ${formatFileSize(MAX_NEXTCLOUD_BACKUP_BYTES)}.`}</p>
+      {backupBytes !== null && backupBytes > MAX_NEXTCLOUD_BACKUP_BYTES && <p className="notice">Esta copia supera el límite de transferencia. <Link to="/config/database">Descarga una copia local</Link> para conservar todos los archivos.</p>}
       <label className="compact-field"><span>Contraseña para cifrar la nueva copia</span><input className="input" type="password" value={encryptionPassword} onChange={(event) => setEncryptionPassword(event.target.value)} autoComplete="new-password" minLength={12} aria-describedby="nextcloud-encryption-help" /></label>
       <p id="nextcloud-encryption-help">Al menos 12 caracteres. Utiliza una contraseña distinta de la de Nextcloud.</p>
       <label className="compact-field"><span>Repite la contraseña de cifrado</span><input className="input" type="password" value={confirmation} onChange={(event) => setConfirmation(event.target.value)} autoComplete="new-password" /></label>
-      <button className="btn" type="button" onClick={() => void upload()} disabled={!username.trim() || !password || encryptionPassword.length < 12 || !confirmation}>Cifrar y subir copia</button>
+      <button className="btn" type="button" onClick={() => void upload()} disabled={!username.trim() || !password || encryptionPassword.length < 12 || confirmation !== encryptionPassword || backupBytes === null || backupBytes > MAX_NEXTCLOUD_BACKUP_BYTES}>Cifrar y subir copia</button>
     </fieldset>
     <fieldset disabled={busy} className="nextcloud-fields">
       <legend>Restaurar datos</legend>

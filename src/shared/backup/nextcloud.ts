@@ -1,7 +1,8 @@
 import { decryptBackupPayload, encryptBackupPayload, isEncryptedBackupEnvelope } from "./encryption";
 
 const PROTOCOL = "proxy-extension-bridge";
-const MAX_BYTES = 10 * 1024 * 1024;
+export const MAX_NEXTCLOUD_BACKUP_BYTES = 10 * 1024 * 1024;
+const MAX_BYTES = MAX_NEXTCLOUD_BACKUP_BYTES;
 const FILE_PATTERN = /^edunoza-backup-[\dTZ.-]+-[a-f\d-]{36}\.json$/;
 const DAV = "DAV:";
 export type NextcloudCredentials = { server: string; username: string; password: string };

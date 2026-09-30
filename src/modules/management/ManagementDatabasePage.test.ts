@@ -1,6 +1,6 @@
 ﻿import { describe, expect, it } from "vitest";
 import { db } from "../../shared/db/database";
-import { DATABASE_SCHEMA_VERSION, validateDatabasePayload } from "./ManagementDatabasePage";
+import { DATABASE_SCHEMA_VERSION, validateDatabasePayload } from "../../shared/backup/database";
 
 function emptyTables(): Record<string, unknown[]> {
   return Object.fromEntries(db.tables.map((table) => [table.name, []]));
@@ -10,6 +10,12 @@ it("accepts older backups without the optional AI history table", () => {
   const payload = validPayload();
   delete (payload.tables as Record<string, unknown[]>).aiReports;
   expect(() => validateDatabasePayload(payload)).not.toThrow();
+});
+
+it("accepts backups created before optional classroom behavior records were added", () => {
+  const payload = validPayload();
+  delete (payload.tables as Record<string, unknown[]>).behaviorMarks;
+  expect(validateDatabasePayload(payload).behaviorMarks).toEqual([]);
 });
 
 it("rejects malformed archived AI reports", () => {
@@ -193,7 +199,7 @@ describe("database payload validation", () => {
 
   it("defines only the current clean database tables", () => {
     expect(db.name).toBe("profeplus-db");
-    expect(db.verno).toBe(9);
+    expect(db.verno).toBe(10);
     expect(db.tables.map((table) => table.name).sort()).toEqual([
       "academicPeriods",
       "aiReports",

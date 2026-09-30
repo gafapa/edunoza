@@ -8,6 +8,7 @@ import { NoContextBanner } from "./shared/ui/NoContextBanner";
 import { TopTabs } from "./shared/ui/TopTabs";
 import { ConnectionStatus } from "./shared/ui/ConnectionStatus";
 import { AppLockButton, AppLockGate } from "./shared/ui/AppLockGate";
+import { PreferenceStorageNotice } from "./shared/ui/PreferenceStorageNotice";
 import packageJson from "../package.json";
 import { LandingPage } from "./modules/landing/LandingPage";
 import { LEGAL_PATHS, LegalPage } from "./modules/legal/LegalPage";
@@ -214,6 +215,7 @@ function WorkspaceApp() {
       <TopTabs />
 
       <div id="global-notification-region" className="global-notification-region">
+        <PreferenceStorageNotice />
         <BackupReminder />
       </div>
 

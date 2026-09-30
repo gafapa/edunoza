@@ -50,7 +50,9 @@ export function wrapReportLine(text: string, width: number, measure: (text: stri
   const lines: string[] = [];
   let line = "";
   for (const token of text.replace(/\t/g, "    ").match(/\S+\s*|\s+/gu) ?? []) {
-    if (line && measure(line + token) > width) { lines.push(line.trimEnd()); line = ""; }
+    if (measure(line + token) <= width) { line += token; continue; }
+    if (line) { lines.push(line.trimEnd()); line = ""; }
+    if (measure(token) <= width) { line = token; continue; }
     // Long URLs and words must also wrap without exceeding the page width.
     for (const character of token) {
       if (line && measure(line + character) > width) { lines.push(line.trimEnd()); line = ""; }
@@ -81,12 +83,18 @@ export async function createPdf(report: SavedAiReport, fontBytes?: Uint8Array): 
     throw new Error("El PDF contiene símbolos que la fuente no puede representar. Usa Word u ODT, o elimina esos símbolos.");
   }
   const margin = 56.7;
+  const widthCache = new Map<string, number>();
   let page = document.addPage(PageSizes.A4);
   let y = page.getHeight() - margin;
   for (const [index, paragraph] of paragraphs.entries()) {
     const size = index === 0 ? 18 : 11;
     const lineHeight = size * 1.4;
-    const lines = wrapReportLine(paragraph, page.getWidth() - margin * 2, text => font.widthOfTextAtSize(text, size));
+    const lines = wrapReportLine(paragraph, page.getWidth() - margin * 2, text => {
+      const key = `${size}:${text}`;
+      let width = widthCache.get(key);
+      if (width === undefined) { width = font.widthOfTextAtSize(text, size); widthCache.set(key, width); }
+      return width;
+    });
     for (const line of lines) {
       if (y - lineHeight < margin) { page = document.addPage(PageSizes.A4); y = page.getHeight() - margin; }
       y -= lineHeight;

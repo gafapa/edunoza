@@ -17,10 +17,11 @@
     "test": "vitest run && node --test scripts/*.test.mjs",
     "test:coverage": "vitest run --coverage",
     "test:e2e": "playwright test",
-    "lint": "eslint src scripts vite.config.ts vite.config.test.ts vitest.config.ts",
+    "lint": "eslint src scripts vite.config.ts vite.config.test.ts vitest.config.ts playwright.config.ts playwright.production.config.ts e2e/review-fixes.spec.ts e2e-production",
     "typecheck": "tsc -b",
     "audit": "node scripts/audit.mjs",
-    "verify": "npm run lint && npm run typecheck && npm run test && npm run build && npm run audit"
+    "verify": "npm run lint && npm run typecheck && npm run test:coverage && node --test scripts/*.test.mjs && npm run build && npm run audit",
+    "test:e2e:production": "playwright test --config playwright.production.config.ts"
   },
   "dependencies": {
     "@pdf-lib/fontkit": "^1.1.1",
@@ -41,13 +42,14 @@
     "@types/react": "^19.2.18",
     "@types/react-dom": "^19.2.4",
     "@vitejs/plugin-react": "^6.0.5",
-    "@vitest/coverage-v8": "^4.1.10",
+    "@vitest/coverage-v8": "^5.0.2",
     "eslint": "^10.8.0",
     "eslint-plugin-react-hooks": "^7.1.1",
+    "fake-indexeddb": "^6.2.5",
     "globals": "^17.9.0",
-    "typescript": "^5.9.3",
+    "typescript": "^6.0.3",
     "typescript-eslint": "^8.66.0",
     "vite": "^8.2.0",
-    "vitest": "^4.1.10"
+    "vitest": "^5.0.2"
   }
 }

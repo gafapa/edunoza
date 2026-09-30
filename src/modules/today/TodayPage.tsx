@@ -40,6 +40,7 @@ import { useRecoverableDraft } from "../../shared/hooks/useRecoverableDraft";
 import { DraftRecoveryNotice } from "../../shared/ui/DraftRecoveryNotice";
 import { ResourceManager } from "../../shared/resources/ResourceManager";
 import { journalEntryOwnerId } from "../../shared/resources/resources";
+import { BehaviorControls } from "./BehaviorControls";
 
 const STATUS_LABELS: Record<AttendanceEntry["status"], string> = {
   present: "Presente",
@@ -144,6 +145,8 @@ export function TodayPage() {
   const [taskDailySettings, setTaskDailySettings] = useState<TaskDailyEvaluationSetting[]>([]);
   const [taskStudentComments, setTaskStudentComments] = useState<TaskStudentComment[]>([]);
   const [behaviorMarks, setBehaviorMarks] = useState<BehaviorMark[]>([]);
+  const [isSavingBehavior, setIsSavingBehavior] = useState(false);
+  const behaviorWritePending = useRef(false);
   const [statusDraft, setStatusDraft] = useState<Map<string, AttendanceEntry["status"]>>(new Map());
   const [noteDraft, setNoteDraft] = useState<Map<string, string>>(new Map());
   const [attendanceDetailsDraft, setAttendanceDetailsDraft] = useState<Map<string, AttendanceDetailsDraft>>(new Map());
@@ -345,19 +348,35 @@ export function TodayPage() {
     return map;
   }, [behaviorMarks, selectedDate, selectedSlot]);
 
-  const addBehaviorMark = async (studentId: string, kind: BehaviorMark["kind"]): Promise<void> => {
-    if (!selectedSlot) return;
-    const mark: BehaviorMark = {
-      id: crypto.randomUUID(),
-      studentId,
-      classId: selectedSlot.classId,
-      subjectId: selectedSlot.subjectId,
-      date: selectedDate,
-      kind,
-      createdAt: new Date().toISOString()
-    };
-    await db.behaviorMarks.add(mark);
-    setBehaviorMarks((current) => [...current, mark]);
+  const changeBehaviorMark = async (studentId: string, kind: BehaviorMark["kind"], action: "add" | "remove"): Promise<void> => {
+    if (!selectedSlot || behaviorWritePending.current) return;
+    behaviorWritePending.current = true;
+    setIsSavingBehavior(true);
+    try {
+      if (action === "add") {
+        const mark: BehaviorMark = {
+          id: crypto.randomUUID(), studentId, classId: selectedSlot.classId,
+          subjectId: selectedSlot.subjectId, date: selectedDate, kind,
+          createdAt: new Date().toISOString()
+        };
+        await db.behaviorMarks.add(mark);
+      } else {
+        await db.transaction("rw", db.behaviorMarks, async () => {
+          const marks = await db.behaviorMarks.where("[studentId+date]").equals([studentId, selectedDate])
+            .filter(mark => mark.classId === selectedSlot.classId && mark.kind === kind).sortBy("createdAt");
+          const latest = marks[marks.length - 1];
+          if (latest) await db.behaviorMarks.delete(latest.id);
+        });
+      }
+      setBehaviorMarks(await db.behaviorMarks.toArray());
+      const label = kind === "positive" ? "Positivo" : "Negativo";
+      setNotice(`${label} ${action === "add" ? "añadido" : "retirado"}.`);
+    } catch {
+      setNotice("No se pudo actualizar la conducta. Inténtalo de nuevo.");
+    } finally {
+      behaviorWritePending.current = false;
+      setIsSavingBehavior(false);
+    }
   };
 
   const attendanceSummary = useMemo(() => {
@@ -1204,30 +1223,6 @@ export function TodayPage() {
                         <div key={student.id} className="today-student-row exception-flow">
                           <div className="today-student-name-cell">
                             <strong>{formatName(student)}</strong>
-                            <div className="today-behavior-taps" aria-label={`Conducta de ${formatName(student)}`}>
-                              <button
-                                type="button"
-                                className="today-behavior-tap positive"
-                                aria-label={`Conducta positiva para ${formatName(student)}`}
-                                onClick={() => void addBehaviorMark(student.id, "positive")}
-                              >
-                                <span aria-hidden="true">+</span>
-                              </button>
-                              {behaviorCounts && (behaviorCounts.positive > 0 || behaviorCounts.negative > 0) ? (
-                                <small className="today-behavior-count">
-                                  {behaviorCounts.positive > 0 ? `+${behaviorCounts.positive}` : ""}
-                                  {behaviorCounts.negative > 0 ? ` −${behaviorCounts.negative}` : ""}
-                                </small>
-                              ) : null}
-                              <button
-                                type="button"
-                                className="today-behavior-tap negative"
-                                aria-label={`Conducta negativa para ${formatName(student)}`}
-                                onClick={() => void addBehaviorMark(student.id, "negative")}
-                              >
-                                <span aria-hidden="true">−</span>
-                              </button>
-                            </div>
                           </div>
                           <div className="today-exception-control">
                             <span className={`today-current-status ${currentStatus}`}>
@@ -1256,6 +1251,8 @@ export function TodayPage() {
                           >
                             <span>{hasStudentDetails ? "Con detalles" : "Añadir detalles"}</span>
                           </button>
+                          <BehaviorControls studentName={formatName(student)} counts={behaviorCounts ?? { positive: 0, negative: 0 }}
+                            busy={isSavingBehavior} onChange={(kind, action) => void changeBehaviorMark(student.id, kind, action)} />
                         </div>
                       );
                     })}

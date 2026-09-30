@@ -275,6 +275,9 @@ class EdunozaDB extends Dexie {
     this.version(9).stores({
       behaviorMarks: "id,studentId,classId,subjectId,date,kind,createdAt,[studentId+date],[classId+date]"
     });
+    this.version(10).stores({
+      resourceAttachments: "id,ownerType,ownerId,kind,createdAt,[ownerType+ownerId],[kind+sizeBytes]"
+    });
   }
 }
 

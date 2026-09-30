@@ -8,6 +8,14 @@ import type { SavedAiReport } from "./aiReportArchive";
 const report: SavedAiReport = { id: "version", reportId: "report", classId: "class", title: "Informe de avaliación", text: "Lucía, Íñigo e Antón: evolución positiva.\nTexto <script> & contido editable.\n\nPróximos pasos: revisión da aprendizaxe.", context: "Grupo 3 ESO A\nCurso 2026-2027", provider: "ollama", model: "simulated", createdAt: "2026-09-08T12:00:00Z" };
 
 describe("native report documents", () => {
+  it("measures ordinary text by word while retaining long-word wrapping", () => {
+    const measure = vi.fn((text: string) => text.length);
+    const text = "ordinary words ".repeat(20);
+    const lines = wrapReportLine(text, 60, measure);
+    expect(lines.every(line => line.length <= 60)).toBe(true);
+    expect(lines.join("").replace(/ /g, "")).toBe(text.replace(/ /g, ""));
+    expect(measure.mock.calls.length).toBeLessThan(70);
+  });
   it("creates genuine DOCX with escaped editable paragraphs and A4 layout", async () => {
     const blob = await createDocx(report);
     const files = unzipSync(new Uint8Array(await blob.arrayBuffer()));

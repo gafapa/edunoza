@@ -6,22 +6,29 @@ import {
   verifyAppLockPassphrase,
   type AppLockConfig
 } from "../security/appLock";
+import { readSessionValue, writeSessionValue } from "../storage/browserStorage";
 
 const MAX_FAILED_UNLOCK_ATTEMPTS = 5;
 const UNLOCK_COOLDOWN_MS = 30_000;
 const UNLOCK_COOLDOWN_STORAGE_KEY = "profeplus_app_lock_retry_after";
 
 function readRetryAfter(): number {
-  const stored = Number(window.sessionStorage.getItem(UNLOCK_COOLDOWN_STORAGE_KEY));
+  const stored = Number(readSessionValue(UNLOCK_COOLDOWN_STORAGE_KEY));
   const now = Date.now();
   return Number.isFinite(stored) && stored > now && stored <= now + UNLOCK_COOLDOWN_MS
     ? stored
     : 0;
 }
 
+function readLockState(): { config: AppLockConfig | null; error: string } {
+  try { return { config: readAppLockConfig(), error: "" }; }
+  catch (error) { return { config: null, error: error instanceof Error ? error.message : "No se puede comprobar el bloqueo local." }; }
+}
+
 export function AppLockGate({ children }: { children: ReactNode }) {
-  const [config, setConfig] = useState<AppLockConfig | null>(() => readAppLockConfig());
-  const [locked, setLocked] = useState(() => Boolean(readAppLockConfig()));
+  const [lockState, setLockState] = useState(readLockState);
+  const config = lockState.config;
+  const [locked, setLocked] = useState(() => Boolean(lockState.config));
   const [passphrase, setPassphrase] = useState("");
   const [notice, setNotice] = useState("");
   const [isVerifying, setIsVerifying] = useState(false);
@@ -32,12 +39,14 @@ export function AppLockGate({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const handleConfigChange = () => {
-      const next = readAppLockConfig();
-      setConfig(next);
-      if (!next) setLocked(false);
+      const next = readLockState();
+      setLockState(next);
+      if (!next.config && !next.error) setLocked(false);
     };
     const handleLockNow = () => {
-      if (readAppLockConfig()) setLocked(true);
+      const next = readLockState();
+      setLockState(next);
+      if (next.config) setLocked(true);
     };
     window.addEventListener(APP_LOCK_CHANGED_EVENT, handleConfigChange);
     window.addEventListener(APP_LOCK_NOW_EVENT, handleLockNow);
@@ -79,7 +88,7 @@ export function AppLockGate({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (retryAfter <= Date.now()) return;
     const timeoutId = window.setTimeout(() => {
-      window.sessionStorage.removeItem(UNLOCK_COOLDOWN_STORAGE_KEY);
+      writeSessionValue(UNLOCK_COOLDOWN_STORAGE_KEY, null);
       setRetryAfter(0);
       setNotice("");
     }, retryAfter - Date.now());
@@ -99,7 +108,7 @@ export function AppLockGate({ children }: { children: ReactNode }) {
         if (failedAttempts.current >= MAX_FAILED_UNLOCK_ATTEMPTS) {
           const nextRetryAfter = Date.now() + UNLOCK_COOLDOWN_MS;
           failedAttempts.current = 0;
-          window.sessionStorage.setItem(UNLOCK_COOLDOWN_STORAGE_KEY, String(nextRetryAfter));
+          writeSessionValue(UNLOCK_COOLDOWN_STORAGE_KEY, String(nextRetryAfter));
           setRetryAfter(nextRetryAfter);
           setNotice("Demasiados intentos fallidos. Espera 30 segundos antes de volver a intentarlo.");
         } else {
@@ -108,16 +117,19 @@ export function AppLockGate({ children }: { children: ReactNode }) {
         return;
       }
       failedAttempts.current = 0;
-      window.sessionStorage.removeItem(UNLOCK_COOLDOWN_STORAGE_KEY);
+      writeSessionValue(UNLOCK_COOLDOWN_STORAGE_KEY, null);
       setRetryAfter(0);
       setPassphrase("");
       setNotice("");
       setLocked(false);
+    } catch {
+      setNotice("No se pudo comprobar la clave. Vuelve a intentarlo.");
     } finally {
       setIsVerifying(false);
     }
   };
 
+  if (lockState.error) return <main className="app-lock-screen" id="main-content"><section className="app-lock-card"><h1>No se puede comprobar el bloqueo local</h1><p role="alert">{lockState.error}</p><button type="button" className="btn primary" onClick={() => { const next = readLockState(); setLockState(next); setLocked(Boolean(next.config)); }}>Volver a comprobar</button></section></main>;
   if (!config || !locked) return children;
 
   return (
@@ -157,9 +169,9 @@ export function AppLockGate({ children }: { children: ReactNode }) {
 }
 
 export function AppLockButton() {
-  const [enabled, setEnabled] = useState(() => Boolean(readAppLockConfig()));
+  const [enabled, setEnabled] = useState(() => Boolean(readLockState().config));
   useEffect(() => {
-    const handleChange = () => setEnabled(Boolean(readAppLockConfig()));
+    const handleChange = () => setEnabled(Boolean(readLockState().config));
     window.addEventListener(APP_LOCK_CHANGED_EVENT, handleChange);
     return () => window.removeEventListener(APP_LOCK_CHANGED_EVENT, handleChange);
   }, []);

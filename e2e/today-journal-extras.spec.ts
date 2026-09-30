@@ -62,12 +62,12 @@ test("logs a quick positive/negative behavior tap without requiring a save step"
   await page.goto("/today?date=2026-09-08&classId=class-a");
   await page.locator(".today-slot-list").getByText("Matemáticas", { exact: true }).click();
 
-  const positiveButton = page.getByRole("button", { name: "Conducta positiva para Alba Ejemplo", exact: true });
-  const negativeButton = page.getByRole("button", { name: "Conducta negativa para Alba Ejemplo", exact: true });
+  const positiveButton = page.getByRole("button", { name: "Añadir positivo para Alba Ejemplo", exact: true });
+  const negativeButton = page.getByRole("button", { name: "Añadir negativo para Alba Ejemplo", exact: true });
   await positiveButton.click();
   await positiveButton.click();
   await negativeButton.click();
-  await expect(page.locator(".today-behavior-count")).toHaveText("+2 −1");
+  await expect(page.locator(".today-behavior-count")).toHaveText(["2", "1"]);
 
   const marks = await page.evaluate(async () => {
     const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
@@ -79,5 +79,5 @@ test("logs a quick positive/negative behavior tap without requiring a save step"
 
   await page.reload();
   await page.locator(".today-slot-list").getByText("Matemáticas", { exact: true }).click();
-  await expect(page.locator(".today-behavior-count")).toHaveText("+2 −1");
+  await expect(page.locator(".today-behavior-count")).toHaveText(["2", "1"]);
 });

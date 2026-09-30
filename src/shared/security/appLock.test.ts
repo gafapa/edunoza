@@ -17,6 +17,11 @@ class MemoryStorage implements Storage {
 }
 
 describe("app lock", () => {
+  it("does not treat blocked storage as a disabled lock", () => {
+    const storage = new MemoryStorage();
+    storage.getItem = () => { throw new Error("Storage blocked"); };
+    expect(() => readAppLockConfig(storage)).toThrow(/comprobar el bloqueo local/);
+  });
   it("creates a salted verifier and validates the correct passphrase", async () => {
     const config = await createAppLockConfig("teacher passphrase", 15);
     expect(config.verifier).not.toContain("teacher passphrase");
