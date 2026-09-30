@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { startUpdateServer } from "./update-server";
 
 test("built application loads lazy routes without script or CSP errors and works offline", async ({ page, context }) => {
   const errors: string[] = [];
@@ -47,20 +48,25 @@ test("built application downloads a private encrypted backup with an accessible 
   expect(envelope.tables).toBeUndefined();
 });
 
-test("accepting a worker update reloads the built application and retains local storage", async ({ page, context }) => {
-  await page.goto("/today");
-  await expect(page.locator(".app-shell")).toBeVisible();
-  await page.evaluate(async () => { await navigator.serviceWorker.ready; });
-  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
-  await page.evaluate(() => localStorage.setItem("review-update-marker", "kept"));
-  await context.addCookies([{ name: "review_update", value: "1", url: "http://127.0.0.1:5277" }]);
-  const prompt = page.waitForEvent("dialog");
-  await page.evaluate(async () => { await (await navigator.serviceWorker.getRegistration())!.update(); });
-  const dialog = await prompt;
-  expect(dialog.message()).toContain("nueva versión");
-  const reloaded = page.waitForEvent("load");
-  await dialog.accept();
-  await reloaded;
-  await expect(page.locator(".app-shell")).toBeVisible();
-  expect(await page.evaluate(() => localStorage.getItem("review-update-marker"))).toBe("kept");
+test("accepting a worker update reloads the built application and retains local storage", async ({ page }) => {
+  const updateServer = await startUpdateServer();
+  try {
+    await page.goto(`${updateServer.url}/today`);
+    await expect(page.locator(".app-shell")).toBeVisible();
+    await page.evaluate(async () => { await navigator.serviceWorker.ready; });
+    await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+    await page.evaluate(() => localStorage.setItem("review-update-marker", "kept"));
+    updateServer.update();
+    const prompt = page.waitForEvent("dialog");
+    await page.evaluate(async () => { await (await navigator.serviceWorker.getRegistration())!.update(); });
+    const dialog = await prompt;
+    expect(dialog.message()).toContain("nueva versión");
+    const reloaded = page.waitForEvent("load");
+    await dialog.accept();
+    await reloaded;
+    await expect(page.locator(".app-shell")).toBeVisible();
+    expect(await page.evaluate(() => localStorage.getItem("review-update-marker"))).toBe("kept");
+  } finally {
+    await updateServer.close();
+  }
 });
