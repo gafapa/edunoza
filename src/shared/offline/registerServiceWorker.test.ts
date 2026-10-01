@@ -31,9 +31,10 @@ describe("offline worker registration", () => {
   it("does not mistake a late first-install event for an update or suppress the next update", async () => {
     const { registration, serviceWorker, windowTarget } = createEnvironment();
     const firstWorker = createWorker();
-    registration.installing = firstWorker;
     registerServiceWorker("/");
     await Promise.resolve();
+    registration.installing = firstWorker;
+    registration.dispatchEvent(new Event("updatefound"));
     serviceWorker.controller = firstWorker;
     serviceWorker.dispatchEvent(new Event("controllerchange"));
     firstWorker.state = "installed";
