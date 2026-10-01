@@ -36,3 +36,13 @@ Date: 2026-09-30. This report records the remediation of the [initial project re
 The fontkit PDF dependency remains a large, lazily loaded production chunk (approximately 711 kB before gzip). The build reports this size warning; PDF exports load it on demand. Overall unit coverage is 24.8% for statements, with higher enforced thresholds for database recovery, attachment storage, and app-lock code. Browser regressions supplement those unit checks.
 
 These checks cover repository behavior and known dependency advisories. Deployed HTTP headers and authenticated Moodle/Nextcloud installations were not tested against live external services.
+
+## Follow-up: worker update race (2026-10-01)
+
+The failing WebKit trace from GitHub run `36750935391` contains an update confirmation before the test requested an update or attached its dialog listener. The dialog appeared during the first installation, was automatically dismissed, and consumed the page's one-update-prompt flag. The subsequent worker installed successfully but was never offered to the user. A later CI run passed with the same application code, confirming that event ordering affected the result.
+
+Worker registration now ignores the current controller and workers that are no longer waiting in the installed state. It also observes a worker already installing when registration resolves and registers immediately if the window load event has already completed. Unit regressions cover the late first-install event followed by a real update, registration during installation, declined updates, activated workers, and deployment base paths. The production regression observes dialogs before navigation, rejects first-install prompts, and accepts a real update while the browser's update operation is still pending.
+
+Validation results for this follow-up are recorded in its pull request. The previous deployment and the earlier verification counts above describe the September 30 release.
+
+The first follow-up CI run passed the worker-update case in all three browsers but exposed a separate WebKit internal navigation error when the offline fixture reset a live TCP connection. Offline verification now stops an isolated origin completely, verifies a network-only request fails, and requires a successful deep-link response supplied by the service worker. This retains cached-shell coverage without browser offline emulation, TCP resets, retries, or changes to the shipped fetch handler.

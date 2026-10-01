@@ -1,8 +1,9 @@
 import { readFileSync } from "node:fs";
 import { preview } from "vite";
 
-export async function startUpdateServer() {
+export async function startProductionServer() {
   let updated = false;
+  let closing: Promise<void> | undefined;
   const server = await preview({
     configFile: false,
     preview: { host: "127.0.0.1", port: 0, strictPort: true },
@@ -28,8 +29,8 @@ export async function startUpdateServer() {
   return {
     url: `http://127.0.0.1:${address.port}`,
     update: () => { updated = true; },
-    close: async () => {
-      await new Promise<void>((resolve, reject) => server.httpServer.close(error => error ? reject(error) : resolve()));
-    }
+    close: () => closing ??= new Promise<void>((resolve, reject) => {
+      server.httpServer.close(error => error ? reject(error) : resolve());
+    })
   };
 }
