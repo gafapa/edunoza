@@ -1,31 +1,39 @@
 import { expect, test, type Dialog } from "@playwright/test";
-import { startUpdateServer } from "./update-server";
+import { startProductionServer } from "./isolated-server";
 
-test("built application loads lazy routes without script or CSP errors and works offline", async ({ page, context }) => {
-  const errors: string[] = [];
-  page.on("pageerror", error => errors.push(error.message));
-  await page.addInitScript(() => {
-    window.addEventListener("securitypolicyviolation", event => {
-      throw new Error(`CSP ${event.violatedDirective} blocked ${event.blockedURI}`);
+test("built application loads lazy routes without script or CSP errors and works offline", async ({ page }) => {
+  const offlineServer = await startProductionServer();
+  try {
+    const errors: string[] = [];
+    page.on("pageerror", error => errors.push(error.message));
+    await page.addInitScript(() => {
+      window.addEventListener("securitypolicyviolation", event => {
+        throw new Error(`CSP ${event.violatedDirective} blocked ${event.blockedURI}`);
+      });
     });
-  });
-  await page.goto("/today");
-  await expect(page.locator(".app-shell")).toBeVisible();
-  await page.evaluate(async () => { await navigator.serviceWorker.ready; });
-  await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
-  for (const route of ["/classroom", "/reports", "/config/database", "/config/ai"]) {
-    await page.goto(route);
-    await expect(page.locator("main")).toBeVisible();
+    await page.goto(`${offlineServer.url}/today`);
     await expect(page.locator(".app-shell")).toBeVisible();
+    await page.evaluate(async () => { await navigator.serviceWorker.ready; });
+    await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+    for (const route of ["/classroom", "/reports", "/config/database", "/config/ai"]) {
+      await page.goto(`${offlineServer.url}${route}`);
+      await expect(page.locator("main")).toBeVisible();
+      await expect(page.locator(".app-shell")).toBeVisible();
+    }
+    // Stop this origin completely instead of resetting live connections or emulating offline.
+    await offlineServer.close();
+    expect(await page.evaluate(async () => {
+      try { await fetch("/__review_network_probe", { cache: "no-store" }); return false; }
+      catch { return true; }
+    })).toBe(true);
+    const offlineResponse = await page.goto(`${offlineServer.url}/config/database`);
+    expect(offlineResponse?.status()).toBe(200);
+    expect(offlineResponse?.fromServiceWorker()).toBe(true);
+    await expect(page.getByRole("button", { name: "Crear copia cifrada", exact: true })).toBeVisible();
+    expect(errors).toEqual([]);
+  } finally {
+    await offlineServer.close();
   }
-  await context.addCookies([{ name: "review_offline", value: "1", url: "http://127.0.0.1:5277" }]);
-  expect(await page.evaluate(async () => {
-    try { await fetch("/__review_network_probe", { cache: "no-store" }); return false; }
-    catch { return true; }
-  })).toBe(true);
-  await page.goto("/config/database");
-  await expect(page.getByRole("button", { name: "Crear copia cifrada", exact: true })).toBeVisible();
-  expect(errors).toEqual([]);
 });
 
 test("built application downloads a private encrypted backup with an accessible modal", async ({ page }) => {
@@ -49,7 +57,7 @@ test("built application downloads a private encrypted backup with an accessible 
 });
 
 test("accepting a worker update reloads the built application and retains local storage", async ({ page }) => {
-  const updateServer = await startUpdateServer();
+  const updateServer = await startProductionServer();
   const initialDialogs: string[] = [];
   const dismissInitialDialog = (dialog: Dialog): void => {
     initialDialogs.push(dialog.message());
