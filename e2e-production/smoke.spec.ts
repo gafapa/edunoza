@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Dialog } from "@playwright/test";
 import { startUpdateServer } from "./update-server";
 
 test("built application loads lazy routes without script or CSP errors and works offline", async ({ page, context }) => {
@@ -50,12 +50,20 @@ test("built application downloads a private encrypted backup with an accessible 
 
 test("accepting a worker update reloads the built application and retains local storage", async ({ page }) => {
   const updateServer = await startUpdateServer();
+  const initialDialogs: string[] = [];
+  const dismissInitialDialog = (dialog: Dialog): void => {
+    initialDialogs.push(dialog.message());
+    void dialog.dismiss();
+  };
+  page.on("dialog", dismissInitialDialog);
   try {
     await page.goto(`${updateServer.url}/today`);
     await expect(page.locator(".app-shell")).toBeVisible();
     await page.evaluate(async () => { await navigator.serviceWorker.ready; });
-    await expect.poll(() => page.evaluate(() => Boolean(navigator.serviceWorker.controller))).toBe(true);
+    await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller?.state)).toBe("activated");
     await page.evaluate(() => localStorage.setItem("review-update-marker", "kept"));
+    expect(initialDialogs, "First installation must not offer an update").toEqual([]);
+    page.off("dialog", dismissInitialDialog);
     page.on("console", message => {
       if (message.text().startsWith("Worker update")) console.info(message.text());
     });
@@ -68,13 +76,17 @@ test("accepting a worker update reloads the built application and retains local 
       });
     });
     updateServer.update();
-    const prompt = page.waitForEvent("dialog");
-    await page.evaluate(async () => { await (await navigator.serviceWorker.getRegistration())!.update(); });
-    const dialog = await prompt;
-    expect(dialog.message()).toContain("nueva versión");
     const reloaded = page.waitForEvent("load");
-    await dialog.accept();
-    await reloaded;
+    const prompt = page.waitForEvent("dialog").then(async dialog => {
+      expect(dialog.message()).toContain("nueva versión");
+      await dialog.accept();
+    });
+    // Handle the blocking confirm while update() is still running in the page.
+    await Promise.all([
+      prompt,
+      reloaded,
+      page.evaluate(async () => { await (await navigator.serviceWorker.getRegistration())!.update(); })
+    ]);
     await expect(page.locator(".app-shell")).toBeVisible();
     expect(await page.evaluate(() => localStorage.getItem("review-update-marker"))).toBe("kept");
   } finally {

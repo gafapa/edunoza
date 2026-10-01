@@ -8,57 +8,14 @@ import App from "./App";
 import { store } from "./app/store";
 import { AppErrorBoundary } from "./shared/ui/AppErrorBoundary";
 import { UnsavedChangesDialogProvider } from "./shared/ui/UnsavedChangesDialog";
+import { registerServiceWorker } from "./shared/offline/registerServiceWorker";
 import "./styles.css";
 import "./styles/public.css";
 import "./styles/feedback-recovery.css";
 import "./styles/workspace.css";
 import "./shared/ui/compactForms.css";
 
-function registerServiceWorker(): void {
-  if (!import.meta.env.PROD || !("serviceWorker" in navigator)) return;
-  let reloading = false;
-  let hadController = Boolean(navigator.serviceWorker.controller);
-  let updatePromptShown = false;
-  const offerUpdate = (worker: ServiceWorker): void => {
-    if (!navigator.serviceWorker.controller || updatePromptShown) return;
-    updatePromptShown = true;
-    const shouldReload = window.confirm(
-      "Hay una nueva versión de Edunoza. ¿Quieres recargar ahora?"
-    );
-    if (shouldReload) {
-      worker.postMessage({ type: "SKIP_WAITING" });
-    }
-  };
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    // The first claim already uses this build; reload only when a worker replaces it.
-    if (!hadController) { hadController = true; return; }
-    if (reloading) return;
-    reloading = true;
-    window.location.reload();
-  });
-  window.addEventListener("load", () => {
-    void navigator.serviceWorker
-      .register(`${import.meta.env.BASE_URL}sw.js`, { scope: import.meta.env.BASE_URL })
-      .then((registration) => {
-        if (registration.waiting) {
-          offerUpdate(registration.waiting);
-        }
-        registration.addEventListener("updatefound", () => {
-          const installingWorker = registration.installing;
-          if (!installingWorker) return;
-          installingWorker.addEventListener("statechange", () => {
-            if (installingWorker.state !== "installed" || !navigator.serviceWorker.controller) return;
-            offerUpdate(registration.waiting ?? installingWorker);
-          });
-        });
-      })
-      .catch((error: unknown) => {
-        console.error("Edunoza could not register its offline worker.", error);
-      });
-  });
-}
-
-registerServiceWorker();
+if (import.meta.env.PROD) registerServiceWorker(import.meta.env.BASE_URL);
 const rawHistory = createBrowserHistory();
 type RouterHistory = HistoryRouterProps["history"];
 type BlockableRouterHistory = RouterHistory & {

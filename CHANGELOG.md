@@ -10,6 +10,7 @@
 
 ### Review corrections
 
+- Ignore late first-install worker events when offering updates, observe installation already in progress when registration resolves, and verify first-install silence and accepted upgrades across browsers.
 - Guard local import, reset, and demo loading against edits made during safety-backup encryption, using one protected snapshot and an atomic comparison.
 - Move backup serialization, validation, and replacement into a shared service; preserve schema 6 payloads and optional report and behavior history.
 - Recover preference and draft storage failures without crashing, and show a retry screen when local lock storage cannot be checked.
