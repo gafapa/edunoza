@@ -1406,8 +1406,8 @@ input, textarea, select, button, a {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 44px;
-  min-height: 44px;
+  min-width: 36px;
+  min-height: 36px;
   border: 1px solid #cbd8ea;
   border-radius: 999px;
   background: #ffffff;

@@ -712,15 +712,15 @@
 
 .today-behavior-taps {
   flex-wrap: wrap;
-  gap: 8px 16px;
+  gap: 6px 20px;
 }
 
 .today-behavior-group {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 44px 44px;
+  grid-template-columns: auto 36px 36px;
   align-items: center;
-  gap: 6px;
-  flex: 1 1 220px;
+  gap: 4px;
+  flex: 0 1 auto;
   min-width: 0;
 }
 
@@ -744,8 +744,8 @@
 .today-behavior-group.negative { color: #a02a2a; }
 
 .today-behavior-tap {
-  width: 44px;
-  height: 44px;
+  width: 36px;
+  height: 36px;
   padding: 0;
   border-radius: 8px;
 }

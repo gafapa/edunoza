@@ -212,8 +212,8 @@ function validateSnapshot(snapshot: MoodleCourseSnapshot, scope: MoodleScope): v
   }
   if (!snapshot.course.fullName.trim() || !snapshot.course.shortName.trim()) throw new Error("La instantánea no identifica correctamente el curso de Moodle.");
   if (!Number.isFinite(new Date(snapshot.fetchedAt).getTime())) throw new Error("La instantánea de Moodle no tiene una fecha válida.");
-  if (!Array.isArray(snapshot.warnings) || snapshot.warnings.some((warning) => typeof warning !== "string") || snapshot.warnings.length > 0) {
-    throw new Error("Moodle devolvió avisos y no es seguro preparar cambios locales con esta lectura.");
+  if (!Array.isArray(snapshot.warnings) || snapshot.warnings.some((warning) => typeof warning !== "string")) {
+    throw new Error("Moodle devolvió una instantánea con avisos en un formato no reconocido.");
   }
   const studentIds = new Set<number>();
   for (const student of snapshot.students) {
