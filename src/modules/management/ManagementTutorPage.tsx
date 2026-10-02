@@ -247,6 +247,8 @@ export function ManagementTutorPage() {
   );
   const openFollowUps = normalizedFollowUps.filter((item) => item.status !== "done");
   const overdueFollowUps = openFollowUps.filter((item) => item.dueDate && item.dueDate < today);
+  const overdueContacts = contacts.filter((item) => item.dueDate && item.dueDate < today);
+  const overdueCount = overdueFollowUps.length + overdueContacts.length;
   const highPriorityFollowUps = openFollowUps.filter((item) => item.priority === "high");
 
   const groupMemberIds = useCallback(
@@ -307,6 +309,13 @@ export function ManagementTutorPage() {
     setNotice(`Seguimiento marcado como ${statusLabel(status).toLowerCase()}.`);
   };
 
+  const deleteFollowUp = async (followUp: StudentFollowUp): Promise<void> => {
+    if (!window.confirm(`¿Eliminar el seguimiento "${followUp.title}"? Esta acción no se puede deshacer.`)) return;
+    await db.studentFollowUps.delete(followUp.id);
+    await loadTutorData();
+    setNotice("Seguimiento eliminado.");
+  };
+
   const saveContact = async (): Promise<void> => {
     const student = studentById.get(contactDraft.studentId);
     if (
@@ -344,6 +353,13 @@ export function ManagementTutorPage() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const deleteContact = async (contact: FamilyContact): Promise<void> => {
+    if (!window.confirm(`¿Eliminar el contacto con ${contact.contactName}? Esta acción no se puede deshacer.`)) return;
+    await db.familyContacts.delete(contact.id);
+    await loadTutorData();
+    setNotice("Contacto familiar eliminado.");
   };
 
   const editSupportGroup = (group: SupportGroup): void => {
@@ -405,6 +421,18 @@ export function ManagementTutorPage() {
     } finally {
       setIsSaving(false);
     }
+  };
+
+  const deleteSupportGroup = async (group: SupportGroup): Promise<void> => {
+    if (!window.confirm(`¿Eliminar el grupo de apoyo "${group.name}"? Se quitará también su alumnado asociado. Esta acción no se puede deshacer.`)) return;
+    await db.transaction("rw", db.supportGroups, db.supportGroupMembers, async () => {
+      const memberIds = await db.supportGroupMembers.where("supportGroupId").equals(group.id).primaryKeys();
+      await db.supportGroupMembers.bulkDelete(memberIds);
+      await db.supportGroups.delete(group.id);
+    });
+    if (groupDraft.id === group.id) setGroupDraft(defaultGroupDraft());
+    await loadTutorData();
+    setNotice("Grupo de apoyo eliminado.");
   };
 
   const selectSupportGroupForHandoff = (groupId: string): void => {
@@ -553,7 +581,7 @@ export function ManagementTutorPage() {
         <h1 className="sr-only">Tutoría y apoyos</h1>
         <div className="tutor-hero-metrics" aria-label="Resumen tutorial">
           <span><strong>{openFollowUps.length}</strong> pendientes</span>
-          <span className={overdueFollowUps.length ? "urgent" : ""}><strong>{overdueFollowUps.length}</strong> vencidos</span>
+          <span className={overdueCount ? "urgent" : ""} title="Seguimientos y próximos pasos de contacto con fecha límite pasada"><strong>{overdueCount}</strong> vencidos</span>
           <span><strong>{supportGroups.length}</strong> grupos</span>
         </div>
       </header>
@@ -647,12 +675,13 @@ export function ManagementTutorPage() {
                     <div><dt>Prioridad</dt><dd>{priorityLabel(followUp.priority)}</dd></div>
                     <div><dt>Estado</dt><dd>{statusLabel(followUp.status)}</dd></div>
                   </dl>
-                  {followUp.status !== "done" ? (
-                    <div className="tutor-card-actions">
+                  <div className="tutor-card-actions">
+                    {followUp.status !== "done" ? <>
                       {followUp.status === "open" ? <button type="button" className="btn secondary" onClick={() => void setFollowUpStatus(followUp, "inProgress")}>Empezar</button> : null}
                       <button type="button" className="btn secondary" onClick={() => void setFollowUpStatus(followUp, "done")}>Completar</button>
-                    </div>
-                  ) : null}
+                    </> : null}
+                    <button type="button" className="btn secondary management-danger-btn" onClick={() => void deleteFollowUp(followUp)}>Eliminar</button>
+                  </div>
                 </article>
               );
             })}
@@ -680,10 +709,14 @@ export function ManagementTutorPage() {
           <div className="tutor-card-list">
             {[...contacts].sort((left, right) => right.date.localeCompare(left.date)).map((contact) => {
               const student = studentById.get(contact.studentId);
+              const contactOverdue = Boolean(contact.dueDate && contact.dueDate < today);
               return (
                 <article key={contact.id} className="tutor-contact-card">
                   <div><span className="eyebrow">{contact.date} · {contactChannelLabel(contact.channel)}</span><h3>{student ? formatName(student) : "Alumno no disponible"}</h3><p>{contact.summary}</p></div>
-                  <dl><div><dt>Contacto</dt><dd>{contact.contactName} · {contact.relationship}</dd></div>{contact.agreements ? <div><dt>Acuerdos</dt><dd>{contact.agreements}</dd></div> : null}{contact.nextStep ? <div><dt>Próximo paso</dt><dd>{contact.nextStep}{contact.dueDate ? ` · ${contact.dueDate}` : ""}</dd></div> : null}</dl>
+                  <dl className="tutor-case-meta"><div><dt>Contacto</dt><dd>{contact.contactName} · {contact.relationship}</dd></div>{contact.agreements ? <div><dt>Acuerdos</dt><dd>{contact.agreements}</dd></div> : null}{contact.nextStep ? <div><dt>Próximo paso</dt><dd className={contactOverdue ? "overdue" : ""}>{contact.nextStep}{contact.dueDate ? ` · ${contact.dueDate}` : ""}</dd></div> : null}</dl>
+                  <div className="tutor-card-actions">
+                    <button type="button" className="btn secondary management-danger-btn" onClick={() => void deleteContact(contact)}>Eliminar</button>
+                  </div>
                 </article>
               );
             })}
@@ -725,7 +758,10 @@ export function ManagementTutorPage() {
                   <p>{group.focus || "Sin foco descrito"}</p>
                   <small>Responsable: {group.responsiblePerson}</small>
                   <div className="tutor-group-members">{memberIds.map((id) => <span key={id}>{studentById.get(id) ? formatName(studentById.get(id) as Student) : id}</span>)}</div>
-                  <button type="button" className="btn secondary" onClick={() => editSupportGroup(group)}>Editar</button>
+                  <div className="tutor-card-actions">
+                    <button type="button" className="btn secondary" onClick={() => editSupportGroup(group)}>Editar</button>
+                    <button type="button" className="btn secondary management-danger-btn" onClick={() => void deleteSupportGroup(group)}>Eliminar</button>
+                  </div>
                 </article>
               );
             })}
