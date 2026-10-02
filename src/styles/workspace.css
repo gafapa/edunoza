@@ -701,7 +701,8 @@
   min-width: 0;
 }
 
-.today-student-row.exception-flow > * {
+.today-student-row.exception-flow > *,
+.today-exception-primary > * {
   min-width: 0;
 }
 
@@ -710,7 +711,6 @@
 }
 
 .today-behavior-taps {
-  grid-column: 1 / -1;
   flex-wrap: wrap;
   gap: 8px 16px;
 }
@@ -761,8 +761,11 @@
 }
 
 @container today-students (max-width: 620px) {
-  .today-student-row.exception-flow {
+  .today-exception-primary {
     grid-template-columns: minmax(0, 1fr);
+  }
+
+  .today-student-row.exception-flow {
     gap: 8px;
     padding: 10px;
   }

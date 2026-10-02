@@ -1300,7 +1300,8 @@ input, textarea, select, button, a {
 }
 
 .today-student-list {
-  display: grid;
+  display: flex;
+  flex-direction: column;
   gap: 4px;
 }
 
@@ -1326,6 +1327,7 @@ input, textarea, select, button, a {
   border: 1px solid #e0e8f5;
   border-radius: 6px;
   background: #ffffff;
+  flex-shrink: 0;
 }
 
 .today-student-row.with-work {
@@ -1333,9 +1335,24 @@ input, textarea, select, button, a {
 }
 
 .today-student-row.exception-flow {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 8px;
+  padding: 6px 8px;
+}
+
+.today-student-row-header.exception-flow {
+  display: grid;
   grid-template-columns: minmax(150px, 1fr) minmax(240px, 1.35fr) minmax(130px, 0.7fr);
   gap: 10px;
-  padding: 6px 8px;
+}
+
+.today-exception-primary {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) minmax(240px, 1.35fr) minmax(130px, 0.7fr);
+  align-items: center;
+  gap: 10px;
 }
 
 .today-student-row-header {
@@ -6332,7 +6349,7 @@ td {
     grid-template-columns: 1fr;
   }
 
-  .today-student-row.exception-flow {
+  .today-exception-primary {
     grid-template-columns: minmax(0, 1fr);
   }
 

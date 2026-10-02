@@ -1221,36 +1221,38 @@ export function TodayPage() {
                       const behaviorCounts = behaviorCountsByStudent.get(student.id);
                       return (
                         <div key={student.id} className="today-student-row exception-flow">
-                          <div className="today-student-name-cell">
-                            <strong>{formatName(student)}</strong>
-                          </div>
-                          <div className="today-exception-control">
-                            <span className={`today-current-status ${currentStatus}`}>
-                              {STATUS_LABELS[currentStatus]}
-                            </span>
-                            <div className="today-status-control" aria-label={`Cambiar asistencia de ${formatName(student)}`}>
-                              {availableStatuses.map((status) => (
-                              <button
-                                key={status}
-                                type="button"
-                                className={`today-status-option ${status} ${currentStatus === status ? "active" : ""}`}
-                                aria-label={`${STATUS_LABELS[status]} para ${formatName(student)}`}
-                                aria-pressed={currentStatus === status}
-                                onClick={() => setStudentStatus(student.id, status)}
-                              >
-                                <span aria-hidden="true">{STATUS_SHORT_LABELS[status]}</span>
-                              </button>
-                              ))}
+                          <div className="today-exception-primary">
+                            <div className="today-student-name-cell">
+                              <strong>{formatName(student)}</strong>
                             </div>
+                            <div className="today-exception-control">
+                              <span className={`today-current-status ${currentStatus}`}>
+                                {STATUS_LABELS[currentStatus]}
+                              </span>
+                              <div className="today-status-control" aria-label={`Cambiar asistencia de ${formatName(student)}`}>
+                                {availableStatuses.map((status) => (
+                                <button
+                                  key={status}
+                                  type="button"
+                                  className={`today-status-option ${status} ${currentStatus === status ? "active" : ""}`}
+                                  aria-label={`${STATUS_LABELS[status]} para ${formatName(student)}`}
+                                  aria-pressed={currentStatus === status}
+                                  onClick={() => setStudentStatus(student.id, status)}
+                                >
+                                  <span aria-hidden="true">{STATUS_SHORT_LABELS[status]}</span>
+                                </button>
+                                ))}
+                              </div>
+                            </div>
+                            <button
+                              type="button"
+                              className={`today-note-button details ${hasStudentDetails ? "filled" : ""}`}
+                              aria-label={`Editar detalles de asistencia y trabajo de ${formatName(student)}`}
+                              onClick={() => setEditingStudentDetailsId(student.id)}
+                            >
+                              <span>{hasStudentDetails ? "Con detalles" : "Añadir detalles"}</span>
+                            </button>
                           </div>
-                          <button
-                            type="button"
-                            className={`today-note-button details ${hasStudentDetails ? "filled" : ""}`}
-                            aria-label={`Editar detalles de asistencia y trabajo de ${formatName(student)}`}
-                            onClick={() => setEditingStudentDetailsId(student.id)}
-                          >
-                            <span>{hasStudentDetails ? "Con detalles" : "Añadir detalles"}</span>
-                          </button>
                           <BehaviorControls studentName={formatName(student)} counts={behaviorCounts ?? { positive: 0, negative: 0 }}
                             busy={isSavingBehavior} onChange={(kind, action) => void changeBehaviorMark(student.id, kind, action)} />
                         </div>
