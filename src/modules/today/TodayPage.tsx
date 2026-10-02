@@ -379,6 +379,13 @@ export function TodayPage() {
     }
   };
 
+  const changeSessionStatus = async (session: TaskSession, status: TaskSession["status"]): Promise<void> => {
+    if (status === session.status) return;
+    await db.taskSessions.put({ ...session, status });
+    setTaskSessions(await db.taskSessions.toArray());
+    setNotice(`Sesión marcada como "${SESSION_STATUS_LABELS[status]}".`);
+  };
+
   const attendanceSummary = useMemo(() => {
     const summary = { present: 0, late: 0, absent: 0 };
     for (const student of students) {
@@ -1096,7 +1103,16 @@ export function TodayPage() {
                     <div className="today-plan-overview">
                       <div className="today-plan-title">
                         {selectedTask && selectedSession ? (
-                          <span className={`today-plan-status ${sessionStatus}`}>{SESSION_STATUS_LABELS[sessionStatus]}</span>
+                          <select
+                            className={`today-plan-status ${sessionStatus}`}
+                            aria-label="Estado de la sesión"
+                            value={sessionStatus}
+                            onChange={(event) => void changeSessionStatus(selectedSession, event.target.value as TaskSession["status"])}
+                          >
+                            {(Object.keys(SESSION_STATUS_LABELS) as TaskSession["status"][]).map((status) => (
+                              <option key={status} value={status}>{SESSION_STATUS_LABELS[status]}</option>
+                            ))}
+                          </select>
                         ) : (
                           <span className="today-plan-status free">Registro libre</span>
                         )}
