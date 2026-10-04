@@ -36,7 +36,6 @@ export function ManagementTasksPage() {
     updateTask,
     deleteTask,
     addTaskSubjectLink,
-    removeTaskSubjectLink,
     updateTaskSubjectLink,
     setNotice,
   } = useManagement();
@@ -1060,8 +1059,8 @@ export function ManagementTasksPage() {
                     icon="delete"
                     label={`Eliminar ${task.title || "tarea"}`}
                     onClick={async () => {
+                      if (!window.confirm(`¿Eliminar la tarea "${task.title || "esta tarea"}"? Esta acción no se puede deshacer.`)) return;
                       if (!(await saveIfDirty())) return;
-                      if (link) await removeTaskSubjectLink(link.id);
                       await deleteTask(task.id);
                     }}
                   />

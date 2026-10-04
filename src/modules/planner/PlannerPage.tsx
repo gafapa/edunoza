@@ -330,6 +330,14 @@ export function PlannerPage() {
     [sessionsByClassSlotKey]
   );
 
+  const hasSameTaskInSlot = useCallback(
+    (classId: string, date: string, slotId: string, taskId: string, excludeSessionId?: string): boolean => {
+      const occupants = sessionsByClassSlotKey.get(classSlotKey(classId, date, slotId)) ?? [];
+      return occupants.some((session) => session.taskId === taskId && session.id !== excludeSessionId);
+    },
+    [sessionsByClassSlotKey]
+  );
+
   const draggedSession = useMemo(
     () => taskSessions.find((session) => session.id === draggedSessionId) ?? null,
     [draggedSessionId, taskSessions]
@@ -724,6 +732,10 @@ export function PlannerPage() {
     }
     if (hasConflictingSubjectInSlot(session.classId, targetDate, targetSlotId, session.subjectId, session.id)) {
       setNotice("El bloque destino ya tiene una tarea de otra asignatura programada.");
+      return;
+    }
+    if (hasSameTaskInSlot(session.classId, targetDate, targetSlotId, session.taskId, session.id)) {
+      setNotice("Esa tarea ya está programada en el bloque destino.");
       return;
     }
     if (session.date === targetDate && session.scheduleSlotId === targetSlotId) {

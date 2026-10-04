@@ -93,7 +93,6 @@ type ManagementContextValue = {
   ) => Promise<boolean>;
   deleteTask: (taskId: string) => Promise<void>;
   addTaskSubjectLink: (taskId: string, subjectId: string, unitId?: string) => Promise<void>;
-  removeTaskSubjectLink: (linkId: string) => Promise<void>;
   updateTaskSubjectLink: (linkId: string, unitId: string | undefined) => Promise<boolean>;
 };
 
@@ -454,7 +453,10 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       taskSessionsCount,
       directGradesByClassCount,
       followUpsByClassCount,
-      dailyClassRecordsCount
+      dailyClassRecordsCount,
+      academicPeriodsCount,
+      gradebookSnapshotsCount,
+      gradebookGroupsCount
     ] = await Promise.all([
       db.assessments.where("classId").equals(courseId).count(),
       db.gradeEntries.where("classId").equals(courseId).count(),
@@ -466,7 +468,10 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       db.taskSessions.where("classId").equals(courseId).count(),
       db.taskDirectGrades.where("classId").equals(courseId).count(),
       db.studentFollowUps.where("classId").equals(courseId).count(),
-      db.dailyClassRecords.where("classId").equals(courseId).count()
+      db.dailyClassRecords.where("classId").equals(courseId).count(),
+      db.academicPeriods.where("classId").equals(courseId).count(),
+      db.gradebookPeriodSnapshots.where("classId").equals(courseId).count(),
+      db.gradebookGroups.where("classId").equals(courseId).count()
     ]);
 
     let subjectAssignmentsCount = 0;
@@ -490,7 +495,10 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       `seguimiento_tutorial:${followUpsByClassCount}`,
       `registros_diarios:${dailyClassRecordsCount}`,
       `asignaciones_asignatura:${subjectAssignmentsCount}`,
-      `comentarios_tareas:${taskCommentsCount}`
+      `comentarios_tareas:${taskCommentsCount}`,
+      `periodos_academicos:${academicPeriodsCount}`,
+      `instantaneas_cuaderno:${gradebookSnapshotsCount}`,
+      `grupos_cuaderno:${gradebookGroupsCount}`
     ].filter((item) => Number(item.split(":")[1]) > 0);
 
     if (dependencies.length > 0) {
@@ -1158,7 +1166,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
 
   const deleteTask = async (taskId: string): Promise<void> => {
     const [
-      subjectLinksCount,
+      subjectLinkIds,
       gradebookConfigs,
       sessionsCount,
       commentsCount,
@@ -1169,7 +1177,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       rubricsCount,
       checklistsCount
     ] = await Promise.all([
-      db.taskSubjectLinks.where("taskId").equals(taskId).count(),
+      db.taskSubjectLinks.where("taskId").equals(taskId).primaryKeys(),
       db.taskGradebookConfigs.where("taskId").equals(taskId).toArray(),
       db.taskSessions.where("taskId").equals(taskId).count(),
       db.taskStudentComments.where("taskId").equals(taskId).count(),
@@ -1181,8 +1189,9 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       db.checklistTemplates.where("taskId").equals(taskId).count()
     ]);
     const gradebookConfigsCount = gradebookConfigs.filter(isMeaningfulTaskGradebookConfig).length;
+    // Subject links themselves are not data to protect: deleting the task removes
+    // them atomically below rather than requiring a separate unlink step first.
     const dependencies = formatDependencies([
-      ["vinculos_asignatura", subjectLinksCount],
       ["config_tareas_cuaderno", gradebookConfigsCount],
       ["sesiones", sessionsCount],
       ["comentarios", commentsCount],
@@ -1199,9 +1208,12 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
     }
 
     const emptyConfigIds = gradebookConfigs.filter((config) => !isMeaningfulTaskGradebookConfig(config)).map((config) => config.id);
-    await db.transaction("rw", db.tasks, db.taskGradebookConfigs, db.resourceAttachments, async () => {
+    await db.transaction("rw", db.tasks, db.taskSubjectLinks, db.taskGradebookConfigs, db.resourceAttachments, async () => {
       if (emptyConfigIds.length > 0) {
         await db.taskGradebookConfigs.bulkDelete(emptyConfigIds);
+      }
+      if (subjectLinkIds.length > 0) {
+        await db.taskSubjectLinks.bulkDelete(subjectLinkIds);
       }
       await db.resourceAttachments.where("[ownerType+ownerId]").equals(["task", taskId]).delete();
       await db.tasks.delete(taskId);
@@ -1250,31 +1262,6 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
     return true;
   };
 
-  const removeTaskSubjectLink = async (linkId: string): Promise<void> => {
-    const link = await db.taskSubjectLinks.get(linkId);
-    if (!link) {
-      return;
-    }
-    const dependencies = formatDependencies(await countTaskSubjectUsage(link.taskId, link.subjectId));
-    if (dependencies.length > 0) {
-      setNotice(`No se puede eliminar el vínculo porque ya tiene datos (${dependencies.join(", ")}).`);
-      return;
-    }
-    const emptyConfigs = await db.taskGradebookConfigs
-      .where("taskId")
-      .equals(link.taskId)
-      .filter((config) => config.subjectId === link.subjectId && !isMeaningfulTaskGradebookConfig(config))
-      .toArray();
-    await db.transaction("rw", db.taskSubjectLinks, db.taskGradebookConfigs, async () => {
-      if (emptyConfigs.length > 0) {
-        await db.taskGradebookConfigs.bulkDelete(emptyConfigs.map((config) => config.id));
-      }
-      await db.taskSubjectLinks.delete(linkId);
-    });
-    setNotice("Vínculo eliminado.");
-    await loadAll();
-  };
-
   const value: ManagementContextValue = {
     courses,
     students,
@@ -1314,7 +1301,6 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
     updateTask: (...args) => runSaveWithProgress(() => updateTask(...args)),
     deleteTask: (...args) => runWithProgress(() => deleteTask(...args)),
     addTaskSubjectLink: (...args) => runWithProgress(() => addTaskSubjectLink(...args)),
-    removeTaskSubjectLink: (...args) => runWithProgress(() => removeTaskSubjectLink(...args)),
     updateTaskSubjectLink: (...args) => runSaveWithProgress(() => updateTaskSubjectLink(...args))
   };
 

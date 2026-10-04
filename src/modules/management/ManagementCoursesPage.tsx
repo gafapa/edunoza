@@ -168,6 +168,7 @@ export function ManagementCoursesPage() {
                   icon="delete"
                   label={`Eliminar ${course.name || "grupo"}`}
                   onClick={async () => {
+                    if (!window.confirm(`¿Eliminar el grupo "${course.name || "este grupo"}"? Esta acción no se puede deshacer.`)) return;
                     if (!(await saveIfDirty())) return;
                     await deleteCourse(course.id);
                   }}
