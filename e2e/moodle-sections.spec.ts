@@ -28,7 +28,7 @@ for (const width of [390, 1440]) {
     const stepper = page.getByRole("navigation", { name: "Pasos para importar datos de Moodle" });
     await stepper.getByRole("button", { name: /Elegir clase/ }).click();
     await expect(page.getByRole("combobox", { name: "Curso Moodle", exact: true })).toBeVisible();
-    await stepper.getByRole("button", { name: /Revisar y aplicar/ }).click();
+    await stepper.getByRole("button", { name: /Vincular/ }).click();
     await expect(page.getByRole("combobox", { name: "Registro local para Moodle Pupil", exact: true })).toHaveValue("moodle-local-student");
     await expect(page.getByRole("region", { name: "Vista previa de asociaciones" })).toBeVisible();
     await expect(page.getByRole("button", { name: "Desconectar", exact: true })).toBeVisible();

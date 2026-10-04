@@ -79,12 +79,22 @@ export type MoodleGradePreviewRow = {
   localGrade: number | null;
 };
 
+export type MoodleGradeSkip = {
+  activityId: number;
+  userId: number;
+  taskId: string;
+  studentId: string;
+  reason: string;
+};
+
 export type MoodleGradePreview = {
   token: string;
   connectionId: string;
   scope: MoodleScope;
   snapshotFetchedAt: string;
   rows: MoodleGradePreviewRow[];
+  /** Linked activity/student pairs with a Moodle grade that could not be imported, and why. */
+  skipped: MoodleGradeSkip[];
   state: MoodlePreviewState;
 };
 
@@ -673,6 +683,7 @@ export async function previewGrades(connectionId: string, snapshot: MoodleCourse
   const activityBindings = new Map(bindings.filter((binding) => binding.kind === "activity").map((binding) => [binding.remoteId, binding]));
   const studentBindings = new Map(bindings.filter((binding) => binding.kind === "student").map((binding) => [binding.remoteId, binding]));
   const rows: MoodleGradePreviewRow[] = [];
+  const skipped: MoodleGradeSkip[] = [];
   const latestGrades = new Map<string, MoodleCourseSnapshot["grades"][number]>();
   for (const grade of snapshot.grades) {
     const key = `${grade.activityId}:${grade.userId}`;
@@ -684,8 +695,21 @@ export async function previewGrades(connectionId: string, snapshot: MoodleCourse
     const activity = activities.get(grade.activityId);
     const activityBinding = activityBindings.get(grade.activityId);
     const studentBinding = studentBindings.get(grade.userId);
-    if (!activity || activity.module !== "assign" || !activityBinding || !studentBinding || !activity.gradeMax || activity.gradeMax <= 0 ||
-        activity.advancedGrading || activity.teamSubmission || !await compatibleConfig(activityBinding.localId, scope)) continue;
+    if (!activity || activity.module !== "assign" || !activityBinding || !studentBinding) continue;
+    const reason = activity.advancedGrading
+      ? "Esta actividad usa calificación avanzada (rúbrica o guía) en Moodle; Edunoza no puede importar esas notas."
+      : activity.teamSubmission
+        ? "Esta actividad es una entrega en grupo en Moodle; Edunoza no importa notas de entregas en grupo."
+        : !activity.gradeMax || activity.gradeMax <= 0
+          ? "La actividad de Moodle no tiene una puntuación máxima configurada."
+          : !await compatibleConfig(activityBinding.localId, scope)
+            ? "La tarea local no usa evaluación directa (usa rúbrica, lista de verificación, o pertenece a un periodo cerrado o sin configurar); actívala con evaluación directa para importar notas de Moodle."
+            : undefined;
+    if (reason) {
+      skipped.push({ activityId: activity.id, userId: grade.userId, taskId: activityBinding.localId, studentId: studentBinding.localId, reason });
+      continue;
+    }
+    const gradeMax = activity.gradeMax!;
     const [student, subjectLink] = await Promise.all([
       db.students.get(studentBinding.localId),
       db.subjectStudentLinks.where("[subjectId+studentId]").equals([scope.subjectId, studentBinding.localId]).first()
@@ -694,11 +718,11 @@ export async function previewGrades(connectionId: string, snapshot: MoodleCourse
     const direct = await db.taskDirectGrades.where("[taskId+subjectId+classId]")
       .equals([activityBinding.localId, scope.subjectId, scope.classId]).filter((candidate) => candidate.studentId === studentBinding.localId).first();
     rows.push({ id: `${activityBinding.id}:${studentBinding.id}:${grade.modifiedAt}`, activityId: activity.id, userId: grade.userId,
-      taskId: activityBinding.localId, studentId: studentBinding.localId, remoteGrade: grade.grade, gradeMax: activity.gradeMax,
-      scaledGrade: scaleMoodleGrade(grade.grade, activity.gradeMax), localGrade: direct?.score ?? null });
+      taskId: activityBinding.localId, studentId: studentBinding.localId, remoteGrade: grade.grade, gradeMax,
+      scaledGrade: scaleMoodleGrade(grade.grade, gradeMax), localGrade: direct?.score ?? null });
   }
   return issuePreview("grades", { token: newId(), connectionId, scope: { ...scope }, snapshotFetchedAt: snapshot.fetchedAt,
-    rows, state: await captureState(connection, scope) });
+    rows, skipped, state: await captureState(connection, scope) });
 }
 
 export async function applyGrades(preview: MoodleGradePreview, resolutions: Record<string, MoodleResolution>, signal?: AbortSignal): Promise<void> {
