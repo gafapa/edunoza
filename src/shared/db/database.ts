@@ -55,7 +55,7 @@ function toIsoDate(date: Date): string {
   return date.toISOString().slice(0, 10);
 }
 
-class EdunozaDB extends Dexie {
+export class EdunozaDB extends Dexie {
   aiReports!: Table<SavedAiReport, string>;
   moodleConnections!: Table<MoodleConnection, string>;
   moodleBindings!: Table<MoodleBinding, string>;
@@ -96,9 +96,9 @@ class EdunozaDB extends Dexie {
   feedbackComments!: Table<FeedbackComment, string>;
   behaviorMarks!: Table<BehaviorMark, string>;
 
-  constructor() {
+  constructor(name = "profeplus-db") {
     // Keep the legacy database name so same-origin upgrades retain existing records.
-    super("profeplus-db");
+    super(name);
     this.version(1).stores({
       subjects: "id,name",
       classGroups: "id,name,schoolYear",

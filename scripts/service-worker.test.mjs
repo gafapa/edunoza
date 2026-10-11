@@ -6,11 +6,17 @@ import assert from "node:assert/strict";
 const source = readFileSync(new URL("../public/sw.js", import.meta.url), "utf8")
   .replace("/* __EDUNOZA_PRECACHE_ASSETS__ */ []", '["index.html", "assets/app.js"]');
 
-function worker({ offline = false, shell = new Response("installed shell") } = {}) {
+function worker({ offline = false, shell = new Response("installed shell"), asset } = {}) {
   const listeners = {};
   const writes = [];
   const cache = {
-    match: async (request) => String(request.url ?? request) === "https://school.example/app/" ? shell : undefined,
+    match: async (request, options) => {
+      const url = String(request.url ?? request);
+      if (url === "https://school.example/app/") return shell;
+      if (url === "https://school.example/app/assets/app.js" && asset &&
+          (!request.headers.has("Origin") || options?.ignoreVary)) return asset;
+      return undefined;
+    },
     put: async (request) => { writes.push(String(request.url ?? request)); }
   };
   runInNewContext(source, {
@@ -51,6 +57,13 @@ test("worker caches only allowlisted build assets", async () => {
   const app = worker();
   assert.equal(await (await app.fetch("/app/assets/app.js")).text(), "network response");
   assert.deepEqual(app.writes, ["https://school.example/app/assets/app.js"]);
+});
+
+test("offline module requests reuse precached public assets despite Vary: Origin", async () => {
+  const app = worker({ offline: true, asset: new Response("installed module", { headers: { Vary: "Origin" } }) });
+  assert.equal(await (await app.fetch("/app/assets/app.js", { headers: { Origin: "https://school.example" } })).text(), "installed module");
+  assert.deepEqual(app.writes, []);
+  assert.equal(app.fetch("/app/assets/app.js?private=1", { headers: { Origin: "https://school.example" } }), undefined);
 });
 
 test("online navigation never replaces the installed version's offline shell", async () => {

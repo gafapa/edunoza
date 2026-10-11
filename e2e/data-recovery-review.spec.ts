@@ -155,5 +155,9 @@ test("interrupted class work can be restored and explicitly saved", async ({ pag
   await expect(page.getByRole("button", { name: "Ausente para Alumno Simulado", exact: true })).toHaveAttribute("aria-pressed", "true");
   await page.getByRole("button", { name: /Confirmar y cerrar clase|Guardar cambios de la clase/ }).click();
   await expect(page.getByText(/Clase guardada:/)).toBeVisible();
+  await expect.poll(() => page.evaluate(async () => {
+    const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
+    return (await db.attendanceEntries.where("[classId+date+scheduleSlotId]").equals(["g", "2026-09-08", "slot"]).first())?.status;
+  })).toBe("absent");
   await expect.poll(() => page.evaluate(() => Object.keys(localStorage).filter((key) => key.startsWith("edunoza-draft:class:")).length)).toBe(0);
 });

@@ -24,7 +24,7 @@ async function prepareLinkedAccount(page: import("@playwright/test").Page) {
   await connectMoodleToken(page, "syntheticToken123");
   // A course with exactly one saved destination restores it and jumps straight to review.
   await page.getByRole("combobox", { name: "Curso Moodle", exact: true }).selectOption("4");
-  await expect(page.getByRole("heading", { name: "Alumnado y actividades" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Cambios y notas", exact: true })).toBeVisible();
 }
 
 test("quick update reviews fresh changes without repeating associations", async ({ page }) => {
@@ -38,7 +38,7 @@ test("quick update reviews fresh changes without repeating associations", async 
   // Refresh from "Elegir clase" (equivalent to the old "Buscar cambios" shortcut); it returns straight to review.
   await page.getByRole("navigation", { name: "Pasos para importar datos de Moodle" }).getByRole("button", { name: /Elegir clase/ }).click();
   await page.getByRole("button", { name: "Actualizar curso", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Alumnado y actividades" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Cambios y notas", exact: true })).toBeVisible();
   // The refresh auto-triggers the changes/grades review; wait for the fresh title directly.
   const titleField = page.locator("fieldset").filter({ has: page.locator("legend").filter({ hasText: "Título" }) });
   await expect(titleField.getByRole("radio", { name: "Usar Moodle Updated Moodle title", exact: true })).toBeVisible();

@@ -163,6 +163,34 @@ test("rescheduling a session with recorded data warns inline and proceeds withou
   expect(sessions[0]).toMatchObject({ date: "2026-09-09", scheduleSlotId: "slot-2", status: "moved" });
 });
 
+test("rescheduling a session onto a slot that already has the same task is blocked", async ({ page }) => {
+  await seedBase(page);
+  await page.evaluate(async () => {
+    const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
+    await db.taskSessions.put({ id: "session-1", taskId: "task-1", subjectId: "subject-math", classId: "class-a", date: "2026-09-08", scheduleSlotId: "slot-1", status: "planned" });
+    await db.taskSessions.put({ id: "session-2", taskId: "task-1", subjectId: "subject-math", classId: "class-a", date: "2026-09-09", scheduleSlotId: "slot-2", status: "planned" });
+  });
+
+  await page.goto("/planner?date=2026-09-08&classId=class-a&subjectId=subject-math");
+  await page.getByText("Calentamiento", { exact: true }).first().click();
+  await page.getByRole("dialog", { name: "Editar sesión" }).getByRole("button", { name: "Reprogramar", exact: true }).click();
+
+  const rescheduleDialog = page.getByRole("dialog", { name: "Reprogramar sesión" });
+  await expect(rescheduleDialog).toBeVisible();
+  await rescheduleDialog.locator('input[type="date"]').fill("2026-09-09");
+  await expect(rescheduleDialog.getByLabel("Franja")).toHaveValue("slot-2");
+  await rescheduleDialog.getByRole("button", { name: "Reprogramar sesión", exact: true }).click();
+  await expect(rescheduleDialog.getByText("Esa tarea ya está programada en el bloque destino.", { exact: true })).toBeVisible();
+  await expect(rescheduleDialog).toBeVisible();
+
+  const sessions = await page.evaluate(async () => {
+    const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
+    return db.taskSessions.toArray();
+  });
+  expect(sessions.find((item) => item.id === "session-1")).toMatchObject({ date: "2026-09-08", scheduleSlotId: "slot-1" });
+  expect(sessions.find((item) => item.id === "session-2")).toMatchObject({ date: "2026-09-09", scheduleSlotId: "slot-2" });
+});
+
 test("dragging a session with recorded data onto another slot warns and proceeds only on confirm", async ({ page }) => {
   await seedBase(page);
   await page.evaluate(async () => {

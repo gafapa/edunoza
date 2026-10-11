@@ -71,7 +71,9 @@ self.addEventListener("fetch", (event) => {
 
   event.respondWith(
     caches.open(CACHE_NAME).then(async (cache) => {
-      const cached = await cache.match(request);
+      // Allowlisted public build files have one representation. Hosts may add
+      // Vary: Origin even though module and precache requests send different headers.
+      const cached = await cache.match(request, { ignoreVary: true });
       if (cached) return cached;
       const response = await fetch(request);
       if (response.ok) {

@@ -10,7 +10,8 @@ async function connectAndLoad(page: Page): Promise<void> {
   await page.getByRole("combobox", { name: "Curso Moodle", exact: true }).selectOption("4");
   const groupSelect = page.getByRole("combobox", { name: "Grupo de Edunoza", exact: true });
   const mappingHeading = page.getByRole("heading", { name: "Alumnado y actividades" });
-  await expect(groupSelect.or(mappingHeading)).toBeVisible();
+  const reviewHeading = page.getByRole("heading", { name: "Cambios y notas" });
+  await expect(groupSelect.or(mappingHeading).or(reviewHeading)).toBeVisible();
   if (await groupSelect.isVisible()) {
     await groupSelect.selectOption("moodle-local-class");
     await page.getByRole("combobox", { name: "Materia de Edunoza", exact: true }).selectOption("moodle-local-subject");
@@ -31,7 +32,6 @@ for (const width of [390, 1440]) {
     await connectAndLoad(page);
     await page.getByRole("combobox", { name: "Decisión para Moodle Pupil", exact: true }).selectOption("link");
     await page.getByRole("combobox", { name: "Registro local para Moodle Pupil", exact: true }).selectOption("moodle-local-student");
-    await page.locator("summary").filter({ hasText: /^Actividades ·/ }).click();
     await page.getByRole("combobox", { name: "Decisión para Moodle assignment", exact: true }).selectOption("link");
     await page.getByRole("combobox", { name: "Registro local para Moodle assignment", exact: true }).selectOption("moodle-local-task");
     await page.getByRole("button", { name: "Comprobar asociaciones", exact: true }).click();
@@ -52,6 +52,8 @@ for (const width of [390, 1440]) {
     await openMoodleAccess(page);
     await expect(page.getByLabel("Token del servicio web", { exact: true })).toHaveValue(TOKEN);
     await connectAndLoad(page);
+    // Existing bindings for this scope auto-advance past "Vincular" to "Revisar y aplicar"; step back to confirm the mapping itself survived reconnecting.
+    await page.getByRole("navigation", { name: "Pasos para importar datos de Moodle" }).getByRole("button", { name: /Vincular/ }).click();
     await expect(page.getByRole("combobox", { name: "Registro local para Moodle Pupil", exact: true })).toHaveValue("moodle-local-student");
     const wire = await page.evaluate(async () => {
       const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");

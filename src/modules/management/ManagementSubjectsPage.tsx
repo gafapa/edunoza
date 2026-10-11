@@ -291,6 +291,7 @@ export function ManagementSubjectsPage() {
                     icon="delete"
                     label={`Eliminar ${subject.name || "asignatura"}`}
                     onClick={async () => {
+                      if (!window.confirm(`¿Eliminar la materia "${subject.name || "esta materia"}"? Esta acción no se puede deshacer.`)) return;
                       if (!(await saveIfDirty())) return;
                       await deleteSubject(subject.id);
                     }}

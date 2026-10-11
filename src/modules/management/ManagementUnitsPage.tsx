@@ -182,6 +182,7 @@ export function ManagementUnitsPage() {
                   icon="delete"
                   label={`Eliminar ${unit.name || "unidad"}`}
                   onClick={async () => {
+                    if (!window.confirm(`¿Eliminar la unidad "${unit.name || "esta unidad"}"? Esta acción no se puede deshacer.`)) return;
                     if (!(await saveIfDirty())) return;
                     await deleteUnit(unit.id);
                 }}

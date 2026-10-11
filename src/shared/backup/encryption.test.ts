@@ -7,6 +7,18 @@ import {
 } from "./encryption";
 
 describe("encrypted backups", () => {
+  it("compresses before encryption and predicts the exact transfer size", async () => {
+    const payload = { text: "Synthetic áéíóú content".repeat(10_000) };
+    const compressed = await encryptBackupPayload(payload, "correct horse battery staple", true);
+    expect(compressed.version).toBe(2);
+    expect(compressed.compression).toBe("gzip");
+    expect(estimateEncryptedBackupBytes(payload, true)).toBe(new TextEncoder().encode(JSON.stringify(compressed)).length);
+    expect(estimateEncryptedBackupBytes(payload, true)).toBeLessThan(estimateEncryptedBackupBytes(payload) / 10);
+    await expect(decryptBackupPayload(compressed, "correct horse battery staple")).resolves.toEqual(payload);
+    await expect(decryptBackupPayload({ ...compressed, version: 1, compression: undefined }, "correct horse battery staple")).rejects.toThrow(/descifrar/);
+    expect(isEncryptedBackupEnvelope({ ...compressed, compression: "zip" })).toBe(false);
+    expect(isEncryptedBackupEnvelope({ ...compressed, version: 3 })).toBe(false);
+  });
   it("round-trips a payload without exposing its content", async () => {
     const payload = { students: [{ name: "Ana" }], grades: [8.5] };
     const encrypted = await encryptBackupPayload(payload, "correct horse battery staple");

@@ -26,8 +26,7 @@ import {
   calculateTaskScoresByStudent,
   gradeCellKey,
   matchesTaskScope,
-  taskStudentKey,
-  taskSubjectKey
+  taskStudentKey
 } from "../../shared/gradebook/calculations";
 import {
   buildManualGradeEntry,
@@ -44,216 +43,32 @@ import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuar
 import { parsePastedGradeGrid } from "../../shared/gradebook/bulkGrades";
 import { toLocalIsoDate } from "../../shared/utils/date";
 
-type IncludedTaskRow = {
-  configKey: string;
-  taskId: string;
-  subjectId: string;
-  title: string;
-  subjectName: string;
-  unitName: string;
-  sessionsCount: number;
-  plannedSessionsCount: number;
-  weight: number;
-  instrument: string;
-  groupId?: string;
-};
-
-type OrderedGroupRow = {
-  id: string;
-  name: string;
-  depth: number;
-  pathLabel: string;
-  treeLabel: string;
-};
-
-type GradebookTableColumn = {
-  key: string;
-  title: string;
-  meta: string;
-  kind: "group" | "assessment" | "task" | "final";
-  sourceId: string;
-};
-
-type GradebookMatrixHeaderCell = {
-  key: string;
-  title: string;
-  kind: "root" | "group" | "assessment" | "task" | "final" | "empty";
-  colSpan: number;
-  rowSpan?: number;
-};
-
-function taskConfigKey(taskId: string, subjectId: string): string {
-  return taskSubjectKey(taskId, subjectId);
-}
-
-function defaultTaskGradebookConfigId(taskId: string, subjectId: string, classId: string): string {
-  return `task-config-${taskId}-${subjectId}-${classId}`;
-}
-
-function studentGroupKey(studentId: string, groupId: string): string {
-  return `${studentId}:${groupId}`;
-}
-
-function formatWeightDraft(value: number): string {
-  return Number(value ?? 0).toString();
-}
-
-function parseWeight(rawValue: string): number | null {
-  const normalized = rawValue.replace(",", ".").trim();
-  if (normalized.length === 0) {
-    return 0;
-  }
-  const parsed = Number(normalized);
-  if (Number.isNaN(parsed) || parsed < 0) {
-    return null;
-  }
-  return Number(parsed.toFixed(2));
-}
-
-function formatContribution(share: number): string {
-  return `${(Math.max(0, share) * 100).toFixed(2)}%`;
-}
-
-function formatGradeValue(value: number | null | undefined): string {
-  return typeof value === "number" ? value.toFixed(2) : "";
-}
-
-function assessmentDraftFromRow(assessment: Assessment): ManualAssessmentDraft {
-  return {
-    title: assessment.title,
-    weight: formatWeightDraft(Number(assessment.weight ?? 0)),
-    period: assessment.period ?? "",
-    competency: assessment.competency ?? "",
-    groupId: assessment.groupId ?? ""
-  };
-}
-
-function isMeaningfulTaskGradebookConfig(config: TaskGradebookConfig): boolean {
-  return (
-    Number(config.gradebookWeight ?? 0) > 0 ||
-    Boolean(config.groupId) ||
-    Boolean(config.rubricTemplateId) ||
-    Boolean(config.checklistTemplateId) ||
-    Boolean(config.directGradeEnabled)
-  );
-}
-
-function buildOrderedGroupRows(groups: GradebookGroup[]): OrderedGroupRow[] {
-  const byId = new Map(groups.map((group) => [group.id, group]));
-  const childrenByParent = new Map<string, GradebookGroup[]>();
-
-  for (const group of groups) {
-    const parentId = group.parentId && byId.has(group.parentId) ? group.parentId : "";
-    if (!childrenByParent.has(parentId)) {
-      childrenByParent.set(parentId, []);
-    }
-    childrenByParent.get(parentId)?.push(group);
-  }
-
-  for (const rows of childrenByParent.values()) {
-    rows.sort((a, b) => a.position - b.position || a.name.localeCompare(b.name));
-  }
-
-  const ordered: OrderedGroupRow[] = [];
-  const visit = (parentId: string, depth: number, parentPath: string): void => {
-    const children = childrenByParent.get(parentId) ?? [];
-    for (const child of children) {
-      const pathLabel = parentPath ? `${parentPath} / ${child.name}` : child.name;
-      ordered.push({
-        id: child.id,
-        name: child.name,
-        depth,
-        pathLabel,
-        treeLabel: `${"  ".repeat(depth)}${child.name}`
-      });
-      visit(child.id, depth + 1, pathLabel);
-    }
-  };
-
-  visit("", 0, "");
-  return ordered;
-}
-
-function IconChevronRight() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M9 6l6 6-6 6" />
-    </svg>
-  );
-}
-
-function IconChevronDown() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M6 9l6 6 6-6" />
-    </svg>
-  );
-}
-
-function IconFolder() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
-    </svg>
-  );
-}
-
-function IconTask() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M7 3h7l5 5v13H7a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z" />
-      <path d="M14 3v5h5" />
-    </svg>
-  );
-}
-
-function IconAssessment() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M6 4h12v16H6z" />
-      <path d="M9 9h6M9 13h6M9 17h3" />
-    </svg>
-  );
-}
-
-function IconFolderPlus() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M3 7a2 2 0 0 1 2-2h5l2 2h7a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V7z" />
-      <path d="M12 10v6" />
-      <path d="M9 13h6" />
-    </svg>
-  );
-}
-
-function IconCheck() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M5 13l4 4L19 7" />
-    </svg>
-  );
-}
-
-function IconClose() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M6 6l12 12" />
-      <path d="M18 6L6 18" />
-    </svg>
-  );
-}
-
-function IconTrash() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true">
-      <path d="M3 6h18" />
-      <path d="M8 6V4h8v2" />
-      <path d="M19 6l-1 14H6L5 6" />
-      <path d="M10 11v6" />
-      <path d="M14 11v6" />
-    </svg>
-  );
-}
+import {
+  type IncludedTaskRow,
+  type GradebookTableColumn,
+  type GradebookMatrixHeaderCell,
+  taskConfigKey,
+  defaultTaskGradebookConfigId,
+  studentGroupKey,
+  formatWeightDraft,
+  parseWeight,
+  formatContribution,
+  formatGradeValue,
+  assessmentDraftFromRow,
+  isMeaningfulTaskGradebookConfig,
+  buildOrderedGroupRows
+} from "./gradebookPresentation";
+import {
+  IconChevronRight,
+  IconChevronDown,
+  IconFolder,
+  IconTask,
+  IconAssessment,
+  IconFolderPlus,
+  IconCheck,
+  IconClose,
+  IconTrash
+} from "./GradebookIcons";
 
 export function GradebookPage() {
   const { formatName, compareFn } = useStudentDisplay();

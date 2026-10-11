@@ -37,7 +37,7 @@ export function NextcloudBackupPage() {
   const [backupBytes, setBackupBytes] = useState<number | null>(null);
   const [sizeError, setSizeError] = useState("");
   useEffect(() => {
-    const subscription = liveQuery(async () => estimateEncryptedBackupBytes(await buildCurrentPayload())).subscribe({
+    const subscription = liveQuery(async () => estimateEncryptedBackupBytes(await buildCurrentPayload(), true)).subscribe({
       next: value => { setBackupBytes(value); setSizeError(""); },
       error: () => { setBackupBytes(null); setSizeError("No se pudo calcular el tamaño de la copia. Puedes descargar una copia local desde Base de datos."); }
     });
@@ -143,6 +143,7 @@ export function NextcloudBackupPage() {
       <legend>Crear una copia</legend>
       <p>Se cifra en este dispositivo antes de enviarla a la carpeta Edunoza. Guarda la contraseña en un lugar seguro: no podemos recuperarla.</p>
       <p role="status">{backupBytes === null ? sizeError || "Calculando el tamaño de la copia…" : `Tamaño cifrado: ${formatFileSize(backupBytes)}. Límite de Nextcloud y Proxy: ${formatFileSize(MAX_NEXTCLOUD_BACKUP_BYTES)}.`}</p>
+      <p className="hint">La copia se comprime en este dispositivo antes de cifrarse. Las copias anteriores siguen siendo legibles; los archivos ya comprimidos pueden reducirse poco.</p>
       {backupBytes !== null && backupBytes > MAX_NEXTCLOUD_BACKUP_BYTES && <p className="notice">Esta copia supera el límite de transferencia. <Link to="/config/database">Descarga una copia local</Link> para conservar todos los archivos.</p>}
       <label className="compact-field"><span>Contraseña para cifrar la nueva copia</span><input className="input" type="password" value={encryptionPassword} onChange={(event) => setEncryptionPassword(event.target.value)} autoComplete="new-password" minLength={12} aria-describedby="nextcloud-encryption-help" /></label>
       <p id="nextcloud-encryption-help">Al menos 12 caracteres. Utiliza una contraseña distinta de la de Nextcloud.</p>
