@@ -372,20 +372,24 @@ export function TodayPage() {
     );
   }, [dailyClassRecords, selectedDate, selectedSession, selectedSlot]);
 
+  const attendanceClassId = selectedSlot?.classId;
+  const attendanceSlotId = selectedSlot?.slotId;
+  const attendanceSlotKey = selectedSlot?.key;
+
   useEffect(() => {
     let active = true;
     const loadAttendance = async (): Promise<void> => {
-      if (!selectedSlot) {
+      if (!attendanceClassId || !attendanceSlotId || !attendanceSlotKey) {
         setAttendanceEntries([]);
         return;
       }
       const rows = await db.attendanceEntries
         .where("[classId+date+scheduleSlotId]")
-        .equals([selectedSlot.classId, selectedDate, selectedSlot.slotId])
+        .equals([attendanceClassId, selectedDate, attendanceSlotId])
         .toArray();
       if (!active) return;
       setAttendanceEntries(rows);
-      setLoadedAttendanceKey(`${selectedDate}:${selectedSlot.key}`);
+      setLoadedAttendanceKey(`${selectedDate}:${attendanceSlotKey}`);
       setStatusDraft(new Map());
       setBulkAttendanceUndo(null);
       setNoteDraft(new Map());
@@ -401,7 +405,7 @@ export function TodayPage() {
     return () => {
       active = false;
     };
-  }, [selectedDate, selectedSlot]);
+  }, [selectedDate, attendanceClassId, attendanceSlotId, attendanceSlotKey]);
 
   useEffect(() => {
     if (!selectedSlot) {

@@ -33,4 +33,6 @@ These modules now have individual coverage thresholds in addition to the existin
 
 The 35 affected development-browser flows were verified: 33 passed the initial two-worker run, and two exceeded the original 30-second test budget. Both passed an isolated one-worker rerun within that unchanged budget (24.3 and 10.8 seconds). No test timeout was increased. The final built-application suite passed all 27 tests across Chromium, Firefox, and WebKit, including first-install offline PDF generation, no external report uploads, production CSP, storage feedback, touch target dimensions, and persisted behavior-mark removal. Mobile screenshots were inspected for readable layout and overflow.
 
-Browser validation uses synthetic records in isolated profiles; it does not qualify a live Nextcloud account. This change does not deploy the application or modify the Proxy extension.
+The full CI browser suite exposed two outdated Moodle quick-update assertions: a saved scope goes directly to the "Changes and grades" review, so those assertions now check that screen. It also exposed an attendance reload triggered by a changed session object after saving. Attendance loading now depends on the stable class/date/slot identity, retaining the success notice and avoiding an unnecessary draft reset; the recovery test also checks the persisted absence.
+
+Browser validation uses synthetic records in isolated profiles; it does not qualify a live Nextcloud account. Production deployment is recorded separately after successful CI. The Proxy extension is unchanged.
