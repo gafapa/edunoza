@@ -248,7 +248,7 @@ input, textarea, select, button, a {
 
 .main-module-tabs .section-tab.compact.active {
   border-color: #3f78d1;
-  background: linear-gradient(180deg, #4f8ced 0%, #3871cd 100%);
+  background: linear-gradient(180deg, #3a6cc4 0%, #2a5aa8 100%);
   color: #ffffff;
   box-shadow: 0 8px 18px rgba(56, 113, 205, 0.22);
 }
@@ -316,7 +316,7 @@ input, textarea, select, button, a {
 
 .right-module-tabs .section-tab.compact.active {
   border-color: #6f7f99;
-  background: linear-gradient(180deg, #7d8da8 0%, #5d6c84 100%);
+  background: linear-gradient(180deg, #64748d 0%, #4a5770 100%);
   color: #ffffff;
   box-shadow: 0 8px 18px rgba(66, 80, 105, 0.22);
 }
@@ -553,7 +553,7 @@ input, textarea, select, button, a {
   min-height: 44px;
   align-items: center;
   padding: 7px 16px;
-  background: linear-gradient(180deg, #f5a623 0%, #e08800 100%);
+  background: linear-gradient(180deg, #b35900 0%, #8a4600 100%);
   color: #fff;
   border-radius: 999px;
   font-size: 0.83rem;
@@ -2291,7 +2291,7 @@ td {
 }
 
 .evaluation-tool-buttons .btn.secondary.active {
-  background: linear-gradient(180deg, #4f8ced 0%, #3871cd 100%);
+  background: linear-gradient(180deg, #3a6cc4 0%, #2a5aa8 100%);
   color: #ffffff;
   border-color: #3871cd;
   box-shadow: 0 8px 18px rgba(56, 113, 205, 0.24);
@@ -2611,7 +2611,7 @@ td {
 }
 
 .management-nav a.active {
-  background: linear-gradient(180deg, #4f8ced 0%, #3871cd 100%);
+  background: linear-gradient(180deg, #3a6cc4 0%, #2a5aa8 100%);
   color: #ffffff;
   border-color: #3871cd;
   box-shadow: 0 8px 18px rgba(56, 113, 205, 0.25);
@@ -6007,6 +6007,11 @@ td {
 
 .modal-panel:focus {
   outline: none;
+}
+
+.modal-panel:focus-visible {
+  outline: 2px solid #1f4b99;
+  outline-offset: -2px;
 }
 
 .modal-header {
