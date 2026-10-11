@@ -111,7 +111,7 @@ function fixtureTransport(requests: ProxyRequest[] = []): ProxyTransport {
           warnings: []
         });
       case "core_grading_get_definitions":
-        return response(request, { areas: [], warnings: [] });
+        return response(request, { areas: [{ cmid: 501, activemethod: "", definitions: [] }], warnings: [] });
       case "mod_assign_get_grades":
         expect(params.get("assignmentids[0]")).toBe("91");
         return response(request, { assignments: [{ assignmentid: 91, grades: [{ id: 1, userid: 11, attemptnumber: 0, timecreated: 10, timemodified: 20, grader: 42, grade: "17.5" }] }], warnings: [] });
@@ -198,6 +198,58 @@ describe("Moodle URL and transport safety", () => {
 });
 
 describe("Moodle read-only protocol adapter", () => {
+  it("keeps verified direct grades available when a different module has a permission warning", async () => {
+    const baseTransport = fixtureTransport();
+    const transport: ProxyTransport = async (request, signal) => {
+      const base = await baseTransport(request, signal);
+      const body = JSON.parse(base.bodyText);
+      switch (functionName(request)) {
+        case "core_course_get_contents":
+          body[0].modules.push({ id: 503, instance: 92, name: "Restricted task", modname: "assign", url: `${SERVER}mod/assign/view.php?id=503` });
+          break;
+        case "mod_assign_get_assignments":
+          body.courses[0].assignments.push({ ...body.courses[0].assignments[0], id: 92, cmid: 503, name: "Restricted task" });
+          break;
+        case "mod_assign_get_grades":
+          body.assignments.push({ assignmentid: 92, grades: [] });
+          break;
+        case "mod_assign_get_submissions":
+          body.assignments.push({ assignmentid: 92, submissions: [] });
+          break;
+        case "core_grading_get_definitions":
+          body.warnings = [{ item: "module", itemid: 503, warningcode: "1", message: `private ${TOKEN}` }];
+          break;
+      }
+      return response(request, body);
+    };
+    const snapshot = await createMoodleClient(SERVER, TOKEN, { transport })
+      .getCourseSnapshot({ id: 5, fullName: "Mathematics", shortName: "MATH" });
+    expect(snapshot.activities.find(activity => activity.id === 501)?.advancedGrading).toBe(false);
+    expect(snapshot.activities.find(activity => activity.id === 503)?.advancedGrading).toBeUndefined();
+    expect(snapshot.grades[0].grade).toBe(17.5);
+    expect(snapshot.warnings.join(" ")).not.toContain(TOKEN);
+  });
+
+  it.each(["missing", "unscoped-warning", "unavailable"])("does not classify unverified grading as direct or rubric: %s", async (mode) => {
+    const baseTransport = fixtureTransport();
+    const transport: ProxyTransport = async (request, signal) => {
+      if (mode === "unavailable" && functionName(request) === "core_webservice_get_site_info") {
+        return response(request, siteInfo(allFunctions.filter(name => name !== "core_grading_get_definitions")));
+      }
+      if (functionName(request) === "core_grading_get_definitions") {
+        return response(request, {
+          areas: mode === "missing" ? [] : [{ cmid: 501, activemethod: "", definitions: [] }],
+          warnings: mode === "unscoped-warning" ? [{ warningcode: "1", message: "Private warning" }] : []
+        });
+      }
+      return baseTransport(request, signal);
+    };
+    const snapshot = await createMoodleClient(SERVER, TOKEN, { transport })
+      .getCourseSnapshot({ id: 5, fullName: "Mathematics", shortName: "MATH" });
+    expect(snapshot.activities.find(activity => activity.id === 501)?.advancedGrading).toBeUndefined();
+    expect(snapshot.warnings.length).toBeGreaterThan(0);
+  });
+
   it("gates course reads using the token function allowlist", async () => {
     const requests: ProxyRequest[] = [];
     const transport: ProxyTransport = async (request) => {

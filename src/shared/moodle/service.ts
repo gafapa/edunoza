@@ -696,7 +696,9 @@ export async function previewGrades(connectionId: string, snapshot: MoodleCourse
     const activityBinding = activityBindings.get(grade.activityId);
     const studentBinding = studentBindings.get(grade.userId);
     if (!activity || activity.module !== "assign" || !activityBinding || !studentBinding) continue;
-    const reason = activity.advancedGrading
+    const reason = activity.advancedGrading === undefined
+      ? "Moodle no permite comprobar el método de calificación de esta tarea. Revisa los permisos de core_grading_get_definitions en el servicio web."
+      : activity.advancedGrading
       ? "Esta actividad usa calificación avanzada (rúbrica o guía) en Moodle; Edunoza no puede importar esas notas."
       : activity.teamSubmission
         ? "Esta actividad es una entrega en grupo en Moodle; Edunoza no importa notas de entregas en grupo."

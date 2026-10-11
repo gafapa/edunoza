@@ -44,7 +44,7 @@ export async function installMoodleFixture(page: Page): Promise<void> {
       } else if (functionName === "core_course_get_contents") result = [{ id: 1, name: "Section", modules: [{ id: 71, instance: 7, modname: "assign", name: fixture.activityTitle, url: `${server}/mod/assign/view.php?id=71`, contextid: 701 }] }];
       else if (functionName === "mod_assign_get_assignments") result = { courses: [{ id: 4, fullname: "Synthetic course", shortname: "SYN-4", assignments: [{ id: 7, cmid: 71, course: 4, name: fixture.activityTitle, grade: 100, duedate: 1900000000, teamsubmission: 0, blindmarking: 0, markingworkflow: 0, markingallocation: 0, configs: [] }] }], warnings: [] };
       else if (functionName === "core_course_get_course_module") result = { cm: { id: 71, course: 4, modname: "assign", instance: 7, name: fixture.activityTitle, contextid: 701 }, warnings: [] };
-      else if (functionName === "core_grading_get_definitions") result = { areas: [], warnings: [] };
+      else if (functionName === "core_grading_get_definitions") result = { areas: [{ cmid: 71, activemethod: "", definitions: [] }], warnings: [] };
       else if (functionName === "mod_assign_get_grades") result = { assignments: [{ assignmentid: 7, grades: [{ id: 2, userid: 11, grade: String(fixture.grade), timemodified: fixture.modifiedAt, attemptnumber: 0 }] }], warnings: [] };
       else if (functionName === "mod_assign_get_submissions") result = { assignments: [{ assignmentid: 7, submissions: [{ id: 3, userid: 11, status: "submitted", timemodified: 90, attemptnumber: 0, latest: 1 }] }], warnings: [] };
       else result = { exception: "invalid_parameter_exception", errorcode: "invalidparameter", message: `Unsupported synthetic function ${functionName}` };
