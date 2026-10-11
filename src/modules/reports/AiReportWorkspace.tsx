@@ -23,8 +23,9 @@ export function AiReportWorkspace({ generated, classId }: { generated: SavedAiRe
   const [saving, setSaving] = useState(false);
   const [exporting, setExporting] = useState(false);
   const exportLock = useRef(false);
+  const exportController = useRef<AbortController | null>(null);
   const mounted = useRef(true);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; exportController.current?.abort(); }; }, []);
   const dirty = Boolean(editor && JSON.stringify([editor.title, editor.text]) !== baseline);
   useUnsavedChangesGuard(dirty, "El informe tiene cambios sin guardar en el historial.");
   useEffect(() => {
@@ -53,11 +54,13 @@ export function AiReportWorkspace({ generated, classId }: { generated: SavedAiRe
   const exportDocument = async (format: ReportDocumentFormat) => {
     if (!editor || exportLock.current) return;
     exportLock.current = true;
+    const controller = new AbortController();
+    exportController.current = controller;
     setExporting(true);
     setStatus(`Preparando ${format.toUpperCase()} en este dispositivo…`);
     try {
       const { createReportDocument } = await import("../../shared/reports/reportDocuments");
-      const blob = await createReportDocument(editor, format);
+      const blob = await createReportDocument(editor, format, controller.signal);
       if (!mounted.current) return;
       const url = URL.createObjectURL(blob);
       const link = document.createElement("a");
@@ -72,6 +75,7 @@ export function AiReportWorkspace({ generated, classId }: { generated: SavedAiRe
       if (mounted.current) setStatus(error instanceof Error ? `No se pudo exportar: ${error.message}` : "No se pudo exportar. Inténtalo de nuevo; el texto se conserva.");
     } finally {
       exportLock.current = false;
+      exportController.current = null;
       if (mounted.current) setExporting(false);
     }
   };

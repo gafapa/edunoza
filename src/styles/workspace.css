@@ -717,7 +717,7 @@
 
 .today-behavior-group {
   display: grid;
-  grid-template-columns: auto 36px 36px;
+  grid-template-columns: auto 44px 44px;
   align-items: center;
   gap: 4px;
   flex: 0 1 auto;
@@ -744,8 +744,10 @@
 .today-behavior-group.negative { color: #a02a2a; }
 
 .today-behavior-tap {
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
+  min-width: 44px;
+  min-height: 44px;
   padding: 0;
   border-radius: 8px;
 }

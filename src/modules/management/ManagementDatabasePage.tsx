@@ -14,6 +14,7 @@ import { PRODUCT_NAME } from "../../shared/brand";
 import { db } from "../../shared/db/database";
 import { Modal } from "../../shared/ui/Modal";
 import { BackupTrustPanel } from "../../shared/ui/BackupStatus";
+import { DeviceStoragePanel } from "../../shared/ui/DeviceStoragePanel";
 import { useManagement } from "./ManagementContext";
 import {
   buildCurrentPayload, buildBackupFileName, clearDatabase, seedDatabase,
@@ -257,6 +258,7 @@ export function ManagementDatabasePage() {
             </button>
           </section>
 
+        <DeviceStoragePanel />
         <details className="database-disclosure">
           <summary>Comprobaciones</summary>
           <section aria-labelledby="database-checks-title">

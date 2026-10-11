@@ -32,6 +32,9 @@ The optional [read-only Moodle connection](docs/moodle-integration.md) associate
 - Privacy-preserving product analytics record only fixed event names through same-origin, bodyless requests. No academic content, search text, record IDs, cookies, or persistent user identifiers are collected.
 - An in-app feedback composer lets teachers review and share a suggestion, problem, or question through the browser share sheet or clipboard without sending academic data automatically.
 - Backup freshness reminders, a visible recovery status, and non-destructive backup-file verification make the local-only storage model explicit and easier to recover.
+- The local recovery screen shows estimated browser storage usage and quota, warns at 80% usage, and lets the teacher request persistent storage. Persistence does not replace encrypted backups or protect against explicit browser-data deletion.
+- Nextcloud backups use bounded gzip compression before authenticated encryption, preserving the existing 10 MiB Proxy transfer limit and compatibility with older uncompressed backups. Compressed envelope version 2 is readable by this release; older releases only understand envelope version 1.
+- PDF report downloads run in a same-origin module worker with cancellation and timeout cleanup. The worker and embedded font are included in the offline precache; report content remains on the device.
 
 ## Teacher Workflow
 

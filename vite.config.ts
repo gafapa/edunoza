@@ -116,6 +116,7 @@ export default defineConfig(({ mode }) => {
   return {
     base,
     server: { port: serverPort, host: "127.0.0.1" },
+    worker: { format: "es" },
     build: {
       rollupOptions: {
         output: {

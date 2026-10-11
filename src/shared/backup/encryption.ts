@@ -3,6 +3,7 @@ import {
   isCompatibleProductName,
   type CompatibleProductName
 } from "../brand";
+import { compressBackup, decompressBackup, MAX_BACKUP_PLAINTEXT_BYTES } from "./compression";
 
 const ALGORITHM = "AES-GCM";
 const KDF = "PBKDF2";
@@ -14,7 +15,8 @@ const IV_BYTES = 12;
 export type EncryptedBackupEnvelope = {
   app: CompatibleProductName;
   format: "encrypted-backup";
-  version: 1;
+  version: 1 | 2;
+  compression?: "gzip";
   encryption: {
     algorithm: typeof ALGORITHM;
     kdf: typeof KDF;
@@ -27,10 +29,12 @@ export type EncryptedBackupEnvelope = {
 };
 
 /** Exact UTF-8 transfer size of the compact encrypted envelope, without deriving a key. */
-export function estimateEncryptedBackupBytes(payload: unknown): number {
-  const plaintextBytes = new TextEncoder().encode(JSON.stringify(payload)).length;
+export function estimateEncryptedBackupBytes(payload: unknown, compressed = false): number {
+  const plaintext = new TextEncoder().encode(JSON.stringify(payload));
+  const plaintextBytes = compressed ? compressBackup(plaintext).length : plaintext.length;
   const envelope: EncryptedBackupEnvelope = {
-    app: PRODUCT_NAME, format: "encrypted-backup", version: 1,
+    app: PRODUCT_NAME, format: "encrypted-backup", version: compressed ? 2 : 1,
+    ...(compressed ? { compression: "gzip" as const } : {}),
     encryption: { algorithm: ALGORITHM, kdf: KDF, hash: HASH, iterations: ITERATIONS, salt: "A".repeat(24), iv: "A".repeat(16) },
     ciphertext: ""
   };
@@ -77,7 +81,8 @@ export function isEncryptedBackupEnvelope(value: unknown): value is EncryptedBac
   return (
     isCompatibleProductName(candidate.app) &&
     candidate.format === "encrypted-backup" &&
-    candidate.version === 1 &&
+    ((candidate.version === 1 && candidate.compression === undefined) ||
+      (candidate.version === 2 && candidate.compression === "gzip")) &&
     candidate.encryption?.algorithm === ALGORITHM &&
     candidate.encryption.kdf === KDF &&
     candidate.encryption.hash === HASH &&
@@ -88,7 +93,7 @@ export function isEncryptedBackupEnvelope(value: unknown): value is EncryptedBac
   );
 }
 
-export async function encryptBackupPayload(payload: unknown, password: string): Promise<EncryptedBackupEnvelope> {
+export async function encryptBackupPayload(payload: unknown, password: string, compressed = false): Promise<EncryptedBackupEnvelope> {
   if (password.length < 12) {
     throw new Error("La contraseña debe tener al menos 12 caracteres.");
   }
@@ -96,12 +101,16 @@ export async function encryptBackupPayload(payload: unknown, password: string): 
   const iv = crypto.getRandomValues(new Uint8Array(IV_BYTES));
   const key = await deriveKey(password, salt, ITERATIONS);
   const plaintext = new TextEncoder().encode(JSON.stringify(payload));
-  const ciphertext = await crypto.subtle.encrypt({ name: ALGORITHM, iv }, key, plaintext);
+  if (plaintext.length > MAX_BACKUP_PLAINTEXT_BYTES) throw new Error("La copia supera el tamaño admitido.");
+  const ciphertext = await crypto.subtle.encrypt({ name: ALGORITHM, iv,
+    ...(compressed ? { additionalData: new TextEncoder().encode("Edunoza:encrypted-backup:2:gzip") } : {})
+  }, key, compressed ? compressBackup(plaintext) : plaintext);
 
   return {
     app: PRODUCT_NAME,
     format: "encrypted-backup",
-    version: 1,
+    version: compressed ? 2 : 1,
+    ...(compressed ? { compression: "gzip" as const } : {}),
     encryption: {
       algorithm: ALGORITHM,
       kdf: KDF,
@@ -119,12 +128,18 @@ export async function decryptBackupPayload(envelope: EncryptedBackupEnvelope, pa
     throw new Error("La copia cifrada no tiene un formato compatible.");
   }
   try {
+    if (envelope.ciphertext.length > 4 * Math.ceil((MAX_BACKUP_PLAINTEXT_BYTES + 16) / 3)) throw new Error("Oversized ciphertext");
     const salt = base64ToBytes(envelope.encryption.salt);
     const iv = base64ToBytes(envelope.encryption.iv);
+    if (salt.length !== SALT_BYTES || iv.length !== IV_BYTES) throw new Error("Invalid salt or IV");
     const ciphertext = base64ToBytes(envelope.ciphertext);
     const key = await deriveKey(password, salt, envelope.encryption.iterations);
-    const plaintext = await crypto.subtle.decrypt({ name: ALGORITHM, iv }, key, ciphertext);
-    return JSON.parse(new TextDecoder().decode(plaintext)) as unknown;
+    const plaintext = new Uint8Array(await crypto.subtle.decrypt({ name: ALGORITHM, iv,
+      ...(envelope.version === 2 ? { additionalData: new TextEncoder().encode("Edunoza:encrypted-backup:2:gzip") } : {})
+    }, key, ciphertext));
+    const decoded = envelope.version === 2 ? decompressBackup(plaintext) : plaintext;
+    if (decoded.length > MAX_BACKUP_PLAINTEXT_BYTES) throw new Error("Oversized plaintext");
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(decoded)) as unknown;
   } catch {
     throw new Error("No se pudo descifrar la copia. Comprueba la contraseña y el archivo.");
   }

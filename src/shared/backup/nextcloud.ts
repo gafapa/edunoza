@@ -164,7 +164,7 @@ export function createNextcloudClient(credentials: NextcloudCredentials, transpo
       if (password === credentials.password) throw new Error("Utiliza una contraseña de cifrado distinta de la contraseña de Nextcloud.");
       validate(payload);
       progress("Cifrando la copia en este dispositivo…");
-      const text = JSON.stringify(await encryptBackupPayload(payload, password));
+      const text = JSON.stringify(await encryptBackupPayload(payload, password, true));
       if (new TextEncoder().encode(text).length > MAX_BYTES) throw new Error("La copia cifrada supera 10 MiB. Descarga una copia local desde Base de datos.");
       const name = `edunoza-backup-${new Date().toISOString().replace(/:/g, "-")}-${crypto.randomUUID()}.json`;
       const backup = { name, url: new URL(name, folder).href };
