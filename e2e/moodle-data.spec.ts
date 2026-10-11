@@ -87,3 +87,41 @@ test("Moodle stale previews, cancellation and missing remote records never overw
   });
   expect(result).toMatchObject({ staleRejected: true, conflictDetected: true, titlePreserved: true, score: 7, gradeId: "moodle-local-grade", aborted: true, count: 3, studentPrivate: "PRIVATE student note", taskPrivate: "PRIVATE task instructions", students: 1, tasks: 1 });
 });
+
+test("Moodle grade review imports verified tasks and preserves tasks with unknown or advanced grading", async ({ page }) => {
+  await page.goto("/config/preferences");
+  await seedMoodleLocalRecords(page);
+  const result = await page.evaluate(async () => {
+    const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
+    const service = await import(/* @vite-ignore */ "/src/shared/moodle/service.ts");
+    const connection = await service.saveConnection({ siteUrl: "https://school.example.invalid", siteName: "Synthetic", userId: 9, fullName: "Teacher", functions: [] });
+    const scope = { courseId: 4, classId: "moodle-local-class", subjectId: "moodle-local-subject" };
+    const methods = [false, undefined, true];
+    const task = (await db.tasks.get("moodle-local-task"))!;
+    const config = (await db.taskGradebookConfigs.get("moodle-local-config"))!;
+    const taskLink = (await db.taskSubjectLinks.get("moodle-local-tsl"))!;
+    const activities = [];
+    for (let index = 0; index < methods.length; index += 1) {
+      const taskId = `grade-task-${index}`;
+      await db.tasks.put({ ...task, id: taskId });
+      await db.taskSubjectLinks.put({ ...taskLink, id: `grade-link-${index}`, taskId });
+      await db.taskGradebookConfigs.put({ ...config, id: `grade-config-${index}`, taskId });
+      await db.taskDirectGrades.put({ id: `grade-${index}`, taskId, classId: scope.classId, subjectId: scope.subjectId, studentId: "moodle-local-student", score: 6 });
+      activities.push({ id: 71 + index, courseId: 4, instanceId: 7 + index, module: "assign", title: `Synthetic task ${index}`, url: `https://school.example.invalid/mod/assign/view.php?id=${71 + index}`, gradeMax: 100, advancedGrading: methods[index], teamSubmission: false });
+    }
+    const snapshot = { course: { id: 4, fullName: "Synthetic", shortName: "SYN" }, groups: [], students: [{ id: 11, firstName: "Local", lastName: "Pupil", fullName: "Local Pupil" }], activities, grades: activities.map(activity => ({ activityId: activity.id, userId: 11, grade: 70, modifiedAt: 100 })), submissions: [], warnings: [], fetchedAt: new Date().toISOString() };
+    await service.applyMappingPreview(await service.createMappingPreview(connection.id, snapshot, scope, [
+      { kind: "student", remoteId: 11, action: "link", localId: "moodle-local-student" },
+      ...activities.map((activity, index) => ({ kind: "activity" as const, remoteId: activity.id, action: "link" as const, localId: `grade-task-${index}` }))
+    ]));
+    const preview = await service.previewGrades(connection.id, snapshot, scope);
+    await service.applyGrades(preview, Object.fromEntries(preview.rows.map(row => [row.id, "remote"])));
+    return { imported: preview.rows.map(row => row.activityId), skipped: preview.skipped.map(row => ({ activityId: row.activityId, reason: row.reason })), scores: await Promise.all(methods.map(async (_, index) => (await db.taskDirectGrades.get(`grade-${index}`))?.score)) };
+  });
+  expect(result.imported).toEqual([71]);
+  expect(result.skipped).toEqual([
+    { activityId: 72, reason: expect.stringContaining("core_grading_get_definitions") },
+    { activityId: 73, reason: expect.stringContaining("calificación avanzada") }
+  ]);
+  expect(result.scores).toEqual([7, 6, 6]);
+});

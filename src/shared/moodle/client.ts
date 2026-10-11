@@ -581,7 +581,6 @@ export function createMoodleClient(
     if (modules.length === 0) return { byCmid, warnings: [] };
     const site = await getSiteInfo();
     if (!site.functions.includes(FUNCTIONS.gradingDefinitions)) {
-      modules.forEach((module) => byCmid.set(module.id, true));
       return {
         byCmid,
         warnings: ["Moodle no permite comprobar si las tareas usan calificación avanzada; no se podrán incorporar sus calificaciones con garantías."]
@@ -593,18 +592,23 @@ export function createMoodleClient(
       activeonly: true
     }), FUNCTIONS.gradingDefinitions);
     const warnings = warningsFromEnvelope(envelope, FUNCTIONS.gradingDefinitions);
-    if (warnings.length > 0) {
-      modules.forEach((module) => byCmid.set(module.id, true));
-      return { byCmid, warnings };
-    }
+    const warningRecords = warningDetails(envelope.warnings, FUNCTIONS.gradingDefinitions);
+    const hasUnscopedWarning = warningRecords.some((warning) =>
+      warning.item !== "module" || !modules.some((module) => module.id === warning.itemId));
+    const warnedModules = new Set(warningRecords.map((warning) => warning.itemId));
+    const returnedModules = new Set<number>();
     for (const areaValue of asArray(envelope.areas, FUNCTIONS.gradingDefinitions)) {
       const area = asRecord(areaValue, FUNCTIONS.gradingDefinitions);
       const cmid = asInteger(area.cmid, FUNCTIONS.gradingDefinitions, 1);
-      if (!modules.some((module) => module.id === cmid) || byCmid.has(cmid)) invalidResponse(FUNCTIONS.gradingDefinitions);
+      if (!modules.some((module) => module.id === cmid) || returnedModules.has(cmid)) invalidResponse(FUNCTIONS.gradingDefinitions);
+      returnedModules.add(cmid);
+      if (area.activemethod != null && typeof area.activemethod !== "string") invalidResponse(FUNCTIONS.gradingDefinitions);
       const activeMethod = typeof area.activemethod === "string" ? area.activemethod.trim() : "";
-      byCmid.set(cmid, activeMethod !== "");
+      if (!hasUnscopedWarning && !warnedModules.has(cmid)) byCmid.set(cmid, activeMethod !== "");
     }
-    for (const module of modules) if (!byCmid.has(module.id)) byCmid.set(module.id, false);
+    if (modules.some((module) => !byCmid.has(module.id))) {
+      warnings.push("No se ha podido comprobar la calificación de algunas tareas; sus notas no se importarán. Las tareas comprobadas siguen disponibles.");
+    }
     return { byCmid, warnings };
   };
 
