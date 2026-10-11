@@ -76,4 +76,3 @@ export function closestSlotKey(slots: TodaySlot[], date: string): string {
     return currentDistance < bestDistance ? slot : best;
   }, slots[0]).key;
 }
-

@@ -170,4 +170,3 @@ export function isAssessmentInReportRange(
   if (!start && !end) return true;
   return Boolean(assessment.assessmentDate) && isDateInRange(assessment.assessmentDate, start, end);
 }
-

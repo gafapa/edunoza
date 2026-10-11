@@ -14,4 +14,3 @@ export function validateReport(report: SavedAiReport) {
     throw new Error("El informe contiene caracteres de control no admitidos. Elimínalos antes de exportar.");
   }
 }
-

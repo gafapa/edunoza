@@ -63,4 +63,3 @@ export async function createPdf(report: SavedAiReport, fontBytes?: Uint8Array): 
   }
   return new Blob([new Uint8Array(await document.save())], { type: "application/pdf" });
 }
-

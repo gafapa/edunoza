@@ -131,4 +131,3 @@ export function buildOrderedGroupRows(groups: GradebookGroup[]): OrderedGroupRow
   visit("", 0, "");
   return ordered;
 }
-
