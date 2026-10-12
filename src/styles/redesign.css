@@ -1132,3 +1132,129 @@ td {
   font-size: 0.72rem;
   font-weight: 600;
 }
+
+/* ======================================================================
+   Live review fixes
+   ====================================================================== */
+
+/* One caption style for every compact field label. */
+#main-content .compact-field > :is(span, label):first-child {
+  color: var(--rd-ink-2);
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+#main-content .tutor-form-grid > legend {
+  padding: 0 4px;
+  color: var(--rd-ink);
+  font-size: 0.85rem;
+  font-weight: 800;
+}
+
+/* Page titles: informative ones hide; the rest use the section scale. */
+#main-content .management-page-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+#main-content :is(.moodle-page-heading, .ai-settings-heading, .student-import-page-heading) :is(h1, h2) {
+  margin: 0;
+  color: var(--rd-ink);
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.3;
+}
+
+#main-content :is(#student-import-template-title, #database-restore-title, #database-backup-title, #device-storage-title) {
+  margin: 0 0 4px;
+  color: var(--rd-ink);
+  font-size: 0.95rem;
+  font-weight: 800;
+}
+
+/* Primary actions keep their natural width instead of spanning the card. */
+#main-content :is(.academic-period-create-grid, .academic-period-card, .detail-grid) > .btn {
+  justify-self: start;
+  width: auto;
+}
+
+/* Student record tabs use the shared segmented control. */
+.student-detail-tabs {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  width: auto;
+  max-width: 100%;
+  gap: 2px;
+  padding: 3px;
+  border: 0;
+  border-radius: 10px;
+  background: #e9eef8;
+}
+
+.student-detail-tabs > button {
+  min-width: 0;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rd-ink-2);
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.student-detail-tabs > button.active {
+  background: #ffffff;
+  color: var(--rd-accent-strong);
+  font-weight: 800;
+  box-shadow: 0 1px 3px rgba(21, 34, 59, 0.12);
+}
+
+@media (min-width: 841px) and (pointer: fine) {
+  .student-detail-tabs > button {
+    min-height: 30px;
+    font-size: 0.8rem;
+  }
+}
+
+/* Planner week: visible school days share the full width. */
+@media (min-width: 841px) {
+  .planner-week-grid {
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  }
+}
+
+@media (max-width: 840px) {
+  .student-detail-tabs {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    width: 100%;
+  }
+
+  .student-detail-tabs > button {
+    padding: 0 6px;
+    white-space: normal;
+  }
+}
+
+#main-content .evaluation-empty-instrument {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+#main-content .evaluation-empty-instrument .hint {
+  margin: 0;
+  text-align: left;
+}
+
+#main-content .year-stepper {
+  width: fit-content;
+  max-width: 100%;
+}

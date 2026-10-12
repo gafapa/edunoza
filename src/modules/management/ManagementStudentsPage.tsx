@@ -23,6 +23,7 @@ import { useSearchParams } from "react-router-dom";
 import { useUnsavedChangesDialog } from "../../shared/ui/UnsavedChangesDialog";
 import { useRecoverableDraft } from "../../shared/hooks/useRecoverableDraft";
 import { DraftRecoveryNotice } from "../../shared/ui/DraftRecoveryNotice";
+import { SubnavActions } from "../../shared/ui/SubnavActions";
 
 type FollowUpRecovery = { editingId: string; draft: StudentFollowUpDraft };
 function isFollowUpRecovery(value: unknown): value is FollowUpRecovery {
@@ -334,7 +335,9 @@ export function ManagementStudentsPage() {
     <article className="management-card">
       <h1 className="sr-only">Alumnado</h1>
       <DraftRecoveryNotice {...followUpRecovery} />
-      <p className="hint" role="status">{studentDirty ? "Cambios del alumno pendientes de guardar." : "Datos del alumno guardados."}</p>
+      <SubnavActions>
+        <span role="status" className={`subnav-chip ${studentDirty ? "warning" : "success"}`}>{studentDirty ? "Cambios del alumno pendientes de guardar" : "Datos del alumno guardados"}</span>
+      </SubnavActions>
       <div className="courses-layout">
         <aside className="courses-list-panel">
           <div className="context-sidebar-tabs">

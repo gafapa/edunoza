@@ -7,6 +7,7 @@ import { useStudentDisplay } from "../../shared/hooks/useStudentDisplay";
 import { IconButton } from "../../shared/ui/IconButton";
 import { ClassGroupSelect } from "../../shared/ui/ClassGroupSelect";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
+import { SubnavActions } from "../../shared/ui/SubnavActions";
 
 export function ManagementSubjectsPage() {
   const dispatch = useAppDispatch();
@@ -311,7 +312,9 @@ export function ManagementSubjectsPage() {
               <div className="course-detail-header">
                 <div>
                   <h2>Detalle de asignatura</h2>
-                  <span role="status" className="hint">{subjectDirty ? "Cambios pendientes de guardar" : "Guardado"}</span>
+                  <SubnavActions>
+                  <span role="status" className={`subnav-chip ${subjectDirty ? "warning" : "success"}`}>{subjectDirty ? "Cambios pendientes de guardar" : "Guardado"}</span>
+                </SubnavActions>
                 </div>
               </div>
 

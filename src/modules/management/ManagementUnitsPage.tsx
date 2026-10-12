@@ -4,6 +4,7 @@ import { useAppSelector } from "../../app/hooks";
 import { ContextSidebarTabs } from "../../shared/ui/ContextSidebarTabs";
 import { IconButton } from "../../shared/ui/IconButton";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
+import { SubnavActions } from "../../shared/ui/SubnavActions";
 
 export function ManagementUnitsPage() {
   const selectedSubjectId = useAppSelector((s) => s.app.selectedSubjectId);
@@ -200,7 +201,9 @@ export function ManagementUnitsPage() {
             <>
               <div className="course-detail-header">
                 <h2>Detalle de unidad</h2>
-                <span role="status" className="hint">{unitDirty ? "Cambios pendientes de guardar" : "Guardado"}</span>
+                <SubnavActions>
+                  <span role="status" className={`subnav-chip ${unitDirty ? "warning" : "success"}`}>{unitDirty ? "Cambios pendientes de guardar" : "Guardado"}</span>
+                </SubnavActions>
               </div>
 
               <section className="detail-section">

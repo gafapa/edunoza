@@ -28,6 +28,7 @@ import { useStudentDisplay } from "../../shared/hooks/useStudentDisplay";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
 import { ClassGroupSelect } from "../../shared/ui/ClassGroupSelect";
 import { SubnavActions } from "../../shared/ui/SubnavActions";
+import { formatPlannerDate } from "../../shared/planner/week";
 import { toLocalIsoDate } from "../../shared/utils/date";
 import {
   filterTaskSessionsByAcademicContext,
@@ -997,7 +998,7 @@ export function AttendancePage() {
                           onClick={() => void selectWorkTaskSession(session)}
                           aria-pressed={isSelected}
                         >
-                          <span>{session.date}</span>
+                          <span>{formatPlannerDate(session.date, true)}</span>
                           <span>{slotTimeLabelById.get(session.scheduleSlotId) ?? session.scheduleSlotId}</span>
                         </button>
                       );
@@ -1038,6 +1039,7 @@ export function AttendancePage() {
               ) : !selectedRubricTemplate && !selectedChecklistTemplate ? (
                 <section className="detail-section evaluation-empty-instrument">
                   <h5>Sin instrumento de evaluación</h5>
+                  <p className="hint">Esta tarea no tiene rúbrica ni lista de cotejo asignada. Asigna el instrumento en Tareas.</p>
                   <div className="evaluation-empty-actions">
                     <NavLink className="btn secondary" to={selectedWorkTodayLink}>Registrar comentario en Hoy</NavLink>
                     <NavLink className="btn" to={`/management/tasks?taskId=${encodeURIComponent(selectedTaskForDay.id)}`}>Ir a Tareas</NavLink>
@@ -1146,7 +1148,7 @@ export function AttendancePage() {
                 </section>
               ) : null}
 
-              {!taskHasAssignedInstrument ? (
+              {!taskHasAssignedInstrument && taskHasDirectGrade ? (
                 <p className="hint">
                   Esta tarea no tiene rúbrica ni lista de cotejo asignada. Asigna el instrumento en Tareas.
                 </p>
