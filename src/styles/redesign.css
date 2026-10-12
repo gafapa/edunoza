@@ -526,3 +526,362 @@ td {
     font-size: 0.85rem;
   }
 }
+
+/* ---- Agenda: summary as chips. ---- */
+.agenda-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agenda-metric {
+  display: inline-flex;
+  min-height: 0;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  text-align: left;
+}
+
+.agenda-metric strong {
+  font-size: 0.95rem;
+}
+
+.agenda-metric span {
+  font-size: 0.75rem;
+}
+
+/* ---- Tutor: shared palette, chip metrics, segmented areas, form beside list. ---- */
+.tutor-page {
+  --tutor-ink: var(--rd-ink);
+  --tutor-paper: #ffffff;
+  --tutor-line: var(--rd-line);
+  --tutor-accent: var(--rd-accent);
+}
+
+.tutor-hero {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.tutor-hero-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tutor-hero-metrics span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #e9eef8;
+  color: var(--rd-ink-2);
+}
+
+.tutor-hero-metrics strong {
+  font-size: 0.95rem;
+}
+
+.tutor-hero-metrics .urgent {
+  background: #fdeceb;
+}
+
+.tutor-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-self: start;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: #e9eef8;
+}
+
+.tutor-tabs button {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rd-ink-2);
+  font-weight: 700;
+}
+
+.tutor-tabs button.active {
+  background: #ffffff;
+  color: var(--rd-accent-strong);
+  font-weight: 800;
+  box-shadow: 0 1px 3px rgba(21, 34, 59, 0.12);
+}
+
+.tutor-panel {
+  border-color: var(--rd-line);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.tutor-page fieldset.tutor-form-grid {
+  border: 1px solid var(--rd-line);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.tutor-page input:not([type="checkbox"]),
+.tutor-page select,
+.tutor-page textarea {
+  border-color: var(--rd-line);
+}
+
+@media (min-width: 1100px) {
+  .tutor-panel {
+    grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .tutor-panel > .tutor-panel-heading {
+    grid-column: 1 / -1;
+  }
+
+  .tutor-panel > :is(.tutor-card-list, .tutor-group-grid) {
+    grid-column: 2;
+    grid-row: 2 / span 20;
+    margin-top: 0;
+  }
+
+  .tutor-panel > :not(.tutor-panel-heading, .tutor-card-list, .tutor-group-grid, .handoff-layout, .handoff-preview) {
+    grid-column: 1;
+  }
+
+  .tutor-panel > :is(.handoff-layout, .handoff-preview) {
+    grid-column: 1 / -1;
+  }
+
+  .tutor-panel .tutor-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .tutor-panel .tutor-form-grid .wide {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 841px) and (pointer: fine) {
+  .tutor-tabs button {
+    min-height: 30px;
+    padding: 0 14px;
+    font-size: 0.8rem;
+  }
+
+  .tutor-page input:not([type="checkbox"]),
+  .tutor-page select {
+    min-height: 32px;
+    padding: 5px 8px;
+  }
+}
+
+/* ---- Reports: the page title is implied by the section tab. ---- */
+.reports-period-filter > div:first-child h1 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+
+.reports-period-filter > div:first-child p {
+  margin: 0;
+}
+
+.report-intent-tabs button,
+.report-channel-tabs button {
+  min-height: 0;
+  border-color: var(--rd-line);
+  background: #ffffff;
+  color: var(--rd-ink-2);
+}
+
+.report-intent-tabs button.active,
+.report-channel-tabs button.active {
+  border-color: var(--rd-accent);
+  background: var(--rd-accent-tint);
+  color: var(--rd-accent-strong);
+  box-shadow: inset 0 0 0 1px var(--rd-accent);
+}
+
+/* ---- Detail headings: section-sized, not page-sized. ---- */
+.course-detail-header h2 {
+  margin: 0;
+  color: var(--rd-ink);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.course-detail-header h3 {
+  color: var(--rd-ink);
+  font-size: 0.9rem;
+}
+
+.tutor-panel h2 {
+  font-size: 1rem;
+}
+
+.tutor-panel-heading p {
+  font-size: 0.8rem;
+}
+
+.agenda-filters select,
+.tutor-page select {
+  font-weight: 500;
+}
+
+/* ---- Desktop mouse density: one override that outranks the touch-first rules. ---- */
+@media (min-width: 841px) and (pointer: fine) {
+  #main-content :is(
+    .btn,
+    .icon-btn.has-label,
+    .today-date-step,
+    .today-date-today,
+    .today-date-picker,
+    .today-status-option,
+    .today-note-button,
+    .today-close-session,
+    .no-context-cta,
+    .group-context-selector .input,
+    .management-group-selector .input,
+    .attendance-history-sidebar input.input,
+    .year-stepper-btn,
+    .schedule-slot-pill,
+    .database-disclosure > summary,
+    .data-backup-navigation .section-tab,
+    .nextcloud-fields input,
+    .nextcloud-fields select,
+    .nextcloud-fields button,
+    .ai-credential-meta a,
+    .ai-text-button,
+    .agenda-filters select,
+    .agenda-item-action,
+    .tutor-student-picker label,
+    .handoff-student-list label,
+    .student-detail-tabs button,
+    .time-select-input,
+    select.input,
+    input.input:not([type="checkbox"]):not([type="radio"])
+  ) {
+    min-height: 32px;
+  }
+
+  #main-content :is(.year-stepper) {
+    min-height: 32px;
+  }
+
+  #main-content :is(.year-stepper-btn, .schedule-slot-pill, .today-date-step, .today-date-today) {
+    min-width: 36px;
+  }
+
+  #main-content .schedule-slot-pill {
+    border-radius: 8px;
+  }
+}
+
+/* ---- Hoy: slot rail rows read left to right. ---- */
+.today-slot-list.courses-list.section-tabs .section-tab {
+  justify-content: stretch;
+  justify-items: stretch;
+  min-height: 0;
+}
+
+.today-slot-list.courses-list.section-tabs .section-tab.active {
+  border-color: var(--rd-accent);
+  background: var(--rd-accent-tint);
+  color: var(--rd-accent-strong);
+}
+
+/* ---- Detail panels without inner sections still get a card. ---- */
+.course-detail-panel:not(:has(.detail-section, .resource-manager, .tutor-panel, .ai-settings-page, .moodle-settings-page)) {
+  border: 1px solid var(--rd-line);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px 14px;
+}
+
+/* ---- Schedule block type toggle matches the segmented controls. ---- */
+.schedule-block-type-control {
+  border: 0;
+  border-radius: 8px;
+  background: #e9eef8;
+}
+
+.schedule-block-type-option {
+  color: var(--rd-ink-2);
+}
+
+.schedule-block-type-option.active {
+  background: #ffffff;
+  color: var(--rd-accent-strong);
+  box-shadow: 0 1px 3px rgba(21, 34, 59, 0.12);
+}
+
+.schedule-block-type-option.break.active {
+  background: #fbeee0;
+  color: #8a4600;
+  box-shadow: none;
+}
+
+@media (min-width: 841px) and (pointer: fine) {
+  #main-content .schedule-block-type-option {
+    min-height: 26px;
+    font-size: 0.78rem;
+  }
+}
+
+/* ---- Configuration titles at section scale; denser settings menu. ---- */
+:is(.ai-settings-heading, .moodle-page-heading, .student-import-page-heading) :is(h1, h2) {
+  margin: 0;
+  color: var(--rd-ink);
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+:is(.ai-settings-heading, .moodle-page-heading, .student-import-page-heading) p {
+  margin: 2px 0 0;
+  color: var(--rd-muted);
+  font-size: 0.82rem;
+}
+
+.courses-list.section-tabs .section-tab {
+  font-size: 0.85rem;
+}
+
+/* ---- Mobile navigation: flat tiles in the same palette. ---- */
+@media (max-width: 840px) {
+  .main-module-tabs .section-tab.compact,
+  .main-module-tabs .section-tab.compact.featured,
+  .right-module-tabs .section-tab.compact {
+    border: 1px solid var(--rd-line);
+    background: #ffffff;
+    color: var(--rd-ink-2);
+    box-shadow: none;
+  }
+
+  .main-module-tabs .section-tab.compact.featured::before {
+    display: none;
+  }
+
+  .main-module-tabs .section-tab.compact.active,
+  .main-module-tabs .section-tab.compact.featured.active,
+  .right-module-tabs .section-tab.compact.active {
+    border-color: var(--rd-accent);
+    background: var(--rd-accent-tint);
+    color: var(--rd-accent-strong);
+    box-shadow: none;
+  }
+
+  .top-tabs {
+    padding: 8px 10px;
+  }
+}
