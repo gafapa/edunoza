@@ -885,3 +885,32 @@ td {
     padding: 8px 10px;
   }
 }
+
+/* ---- Unit filters as wrapping pills (Tareas, Evaluación). ---- */
+.courses-list.section-tabs.context-sidebar-list[aria-label="Unidades"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: none;
+  overflow: visible;
+}
+
+.courses-list.section-tabs.context-sidebar-list[aria-label="Unidades"] .section-tab {
+  width: auto;
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 1px solid var(--rd-line);
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.courses-list.section-tabs.context-sidebar-list[aria-label="Unidades"] .section-tab.active {
+  border-color: var(--rd-accent);
+}
+
+@media (max-width: 840px), (pointer: coarse) {
+  .courses-list.section-tabs.context-sidebar-list[aria-label="Unidades"] .section-tab {
+    min-height: 40px;
+    padding: 6px 12px;
+  }
+}
