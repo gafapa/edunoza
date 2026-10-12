@@ -220,3 +220,206 @@ body {
     box-shadow: none;
   }
 }
+
+/* ---- Surfaces: page content sits on the page; panels and sections are the cards. ---- */
+.module-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.module-card h2,
+.detail-section h2,
+.detail-section h3,
+.detail-section h5 {
+  color: var(--rd-ink);
+}
+
+.courses-list-panel {
+  border: 1px solid var(--rd-line);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.course-detail-panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.detail-section {
+  border: 1px solid var(--rd-line);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px 14px;
+}
+
+.section-tab {
+  border-radius: 8px;
+  color: var(--rd-ink-2);
+}
+
+.section-tab.active {
+  border-bottom-color: transparent;
+  background: var(--rd-accent-tint);
+  color: var(--rd-accent-strong);
+  box-shadow: inset 0 0 0 1px var(--rd-accent);
+}
+
+.section-tab small {
+  color: var(--rd-muted);
+}
+
+.btn {
+  border-radius: 8px;
+}
+
+a.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.btn.secondary {
+  background: #ffffff;
+  color: var(--rd-ink-2);
+  border-color: var(--rd-line);
+}
+
+.btn.secondary:hover:not(:disabled) {
+  background: var(--rd-line-soft);
+  border-color: #b7c6e3;
+  color: var(--rd-ink);
+}
+
+.input {
+  border-color: var(--rd-line);
+  background: #ffffff;
+  color: var(--rd-ink);
+}
+
+.notice {
+  background: var(--rd-accent-tint);
+  border-color: #c9d6ea;
+  color: var(--rd-accent-strong);
+}
+
+.empty-state {
+  border-color: #c9d6ea;
+  background: #ffffff;
+  color: var(--rd-muted);
+}
+
+.hint {
+  color: var(--rd-muted);
+}
+
+.pill {
+  background: var(--rd-accent-tint);
+  color: var(--rd-accent-strong);
+}
+
+.metric-item {
+  border-color: var(--rd-line-soft);
+  background: #ffffff;
+}
+
+th,
+td {
+  border-bottom-color: var(--rd-line-soft);
+}
+
+/* Compact density for mouse users; touch keeps 44px targets. */
+@media (min-width: 841px) and (pointer: fine) {
+  :is(main, .modal-panel, .app-lock-panel) .compact-field > :is(input, select, .ai-secret-input) {
+    min-height: 32px;
+  }
+
+  .btn {
+    min-height: 32px;
+    padding: 5px 12px;
+    font-size: 0.82rem;
+  }
+
+  .input {
+    padding: 5px 8px;
+    font-size: 0.85rem;
+  }
+
+  .section-tab {
+    padding: 6px 10px;
+  }
+}
+
+/* ---- Sidebar lists: left-aligned rows, tinted active row with accent outline. ---- */
+.courses-list.section-tabs {
+  border-right: 0;
+  padding-right: 0;
+}
+
+.courses-list.section-tabs .section-tab {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--rd-ink-2);
+  text-align: left;
+}
+
+.courses-list.section-tabs .section-tab:hover:not(.active) {
+  background: var(--rd-line-soft);
+}
+
+.courses-list.section-tabs .section-tab.active {
+  border-color: var(--rd-accent);
+  background: var(--rd-accent-tint);
+  color: var(--rd-accent-strong);
+  box-shadow: none;
+  font-weight: 700;
+}
+
+.courses-list.section-tabs .section-tab.drop-target {
+  border: 2px dashed var(--rd-accent);
+  background: #f3f7ff;
+}
+
+.context-sidebar-tabs,
+.context-sidebar-separator {
+  border-color: var(--rd-line-soft);
+}
+
+.icon-btn {
+  border-color: var(--rd-line);
+  color: var(--rd-ink-2);
+}
+
+.icon-btn:hover {
+  background: var(--rd-line-soft);
+}
+
+@media (min-width: 841px) and (pointer: fine) {
+  .courses-list.section-tabs .section-tab {
+    min-height: 32px;
+    padding: 6px 10px;
+  }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+
+  .icon-btn.has-label {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 5px 12px;
+    font-size: 0.82rem;
+  }
+}

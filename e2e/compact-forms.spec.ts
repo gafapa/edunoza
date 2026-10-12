@@ -42,7 +42,8 @@ for (const width of [390, 768, 1440]) {
       });
       expect(geometry.overflow, route).toBe(false);
       for (const field of geometry.fields) {
-        expect(field.height, route).toBeGreaterThanOrEqual(44);
+        // Mouse-driven desktop layouts use 32px controls; touch-sized layouts keep 44px targets.
+        expect(field.height, route).toBeGreaterThanOrEqual(width > 840 ? 32 : 44);
         expect(field.height, route).toBeLessThan(90);
         if (width <= 760) expect(field.stacked, route).toBe(true);
         else if (field.width >= 520) {
