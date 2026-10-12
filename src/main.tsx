@@ -14,6 +14,7 @@ import "./styles/public.css";
 import "./styles/feedback-recovery.css";
 import "./styles/workspace.css";
 import "./shared/ui/compactForms.css";
+import "./styles/redesign.css";
 
 if (import.meta.env.PROD) registerServiceWorker(import.meta.env.BASE_URL);
 const rawHistory = createBrowserHistory();

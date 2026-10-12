@@ -1,0 +1,222 @@
+/*
+ * Redesign shell: flat page surface, white app bar with pill areas,
+ * underline section tabs and a centered content column.
+ * Loaded last so it overrides the legacy shell rules in styles.css.
+ */
+:root {
+  --rd-ink: #15223b;
+  --rd-ink-2: #2b3a56;
+  --rd-muted: #51607e;
+  --rd-line: #d8e0ef;
+  --rd-line-soft: #eef2f9;
+  --rd-page: #f4f7fd;
+  --rd-accent: #1f4b99;
+  --rd-accent-strong: #163a73;
+  --rd-accent-tint: #e8f0ff;
+  --rd-content-max: 1376px;
+  --rd-gutter: 32px;
+  color: var(--rd-ink);
+  background: var(--rd-page);
+}
+
+body {
+  background: var(--rd-page);
+}
+
+.acet-beam-bg {
+  display: none;
+}
+
+.app-brand {
+  display: none;
+}
+
+.top-tabs,
+.top-tabs.has-secondary {
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--rd-line);
+  border-radius: 0;
+  background: #ffffff;
+  backdrop-filter: none;
+}
+
+.workflow-subnav {
+  border: 0;
+  border-bottom: 1px solid var(--rd-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.workflow-subnav-label {
+  display: none;
+}
+
+@media (min-width: 841px) {
+  .top-tabs,
+  .top-tabs.has-secondary {
+    min-height: 56px;
+    gap: 16px;
+    padding: 0 max(var(--rd-gutter), calc((100% - var(--rd-content-max)) / 2));
+    flex-wrap: nowrap;
+  }
+
+  .app-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    color: var(--rd-ink);
+    font-size: 1rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .app-brand-mark {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: var(--rd-accent);
+    color: #ffffff;
+    font-size: 0.875rem;
+    font-weight: 800;
+  }
+
+  .main-module-tabs.section-tabs {
+    justify-content: center;
+    gap: 2px;
+  }
+
+  .main-module-tabs .section-tab.compact,
+  .main-module-tabs .section-tab.compact.featured {
+    min-width: 0;
+    min-height: 32px;
+    padding: 6px 14px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--rd-muted);
+    font-size: 0.82rem;
+    font-weight: 600;
+    box-shadow: none;
+  }
+
+  .main-module-tabs .section-tab.compact:hover:not(.active) {
+    background: var(--rd-line-soft);
+    color: var(--rd-ink);
+  }
+
+  .main-module-tabs .section-tab.compact.active,
+  .main-module-tabs .section-tab.compact.featured.active {
+    background: var(--rd-accent-tint);
+    color: var(--rd-accent-strong);
+    font-weight: 700;
+    box-shadow: none;
+  }
+
+  .main-module-tabs .section-tab.compact.featured::before,
+  .main-module-tabs .section-tab.compact svg,
+  .right-module-tabs .section-tab.compact svg,
+  .workflow-subnav-list .section-tab.compact svg {
+    display: none;
+  }
+
+  .right-module-tabs.section-tabs {
+    margin-left: 0;
+  }
+
+  .right-module-tabs .section-tab.compact {
+    min-width: 0;
+    min-height: 36px;
+    padding: 0 14px;
+    border: 1px solid var(--rd-line);
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--rd-ink-2);
+    font-size: 0.82rem;
+    font-weight: 700;
+    box-shadow: none;
+  }
+
+  .right-module-tabs .section-tab.compact.active {
+    border-color: var(--rd-accent);
+    background: var(--rd-accent-tint);
+    color: var(--rd-accent-strong);
+    font-weight: 800;
+    box-shadow: none;
+  }
+
+  .workflow-subnav {
+    width: calc(100% - 2 * var(--rd-gutter));
+    max-width: var(--rd-content-max);
+    margin: 16px auto 0;
+    padding: 0;
+  }
+
+  .workflow-subnav-list.section-tabs {
+    gap: 24px;
+  }
+
+  .workflow-subnav-list .section-tab.compact {
+    min-width: 0;
+    min-height: 0;
+    margin-bottom: -1px;
+    padding: 6px 0;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--rd-muted);
+    font-size: 0.82rem;
+    font-weight: 600;
+    box-shadow: none;
+  }
+
+  .workflow-subnav-list .section-tab.compact:hover {
+    border-color: transparent;
+    border-bottom-color: var(--rd-line);
+    background: transparent;
+    color: var(--rd-ink);
+  }
+
+  .workflow-subnav-list .section-tab.compact.active {
+    border-color: transparent;
+    border-bottom-color: var(--rd-accent);
+    background: transparent;
+    color: var(--rd-ink);
+    font-weight: 700;
+    box-shadow: none;
+  }
+
+  .main-panel {
+    max-width: calc(var(--rd-content-max) + 2 * var(--rd-gutter));
+    margin: 0 auto;
+    padding: 14px var(--rd-gutter) 64px;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 840px) {
+  .workflow-subnav {
+    margin: 0 10px;
+  }
+
+  .workflow-subnav-list .section-tab.compact {
+    border-radius: 0;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .workflow-subnav-list .section-tab.compact.active {
+    border-bottom-color: var(--rd-accent);
+    background: transparent;
+    color: var(--rd-ink);
+    box-shadow: none;
+  }
+}

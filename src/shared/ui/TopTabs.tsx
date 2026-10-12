@@ -133,6 +133,10 @@ export function TopTabs() {
         className={`top-tabs${showSecondaryNavigation ? " has-secondary" : ""}`}
         aria-label="Áreas principales"
       >
+        <NavLink to="/today" className="app-brand" aria-label="Edunoza, ir a Hoy">
+          <span className="app-brand-mark" aria-hidden="true">E</span>
+          <span aria-hidden="true">Edunoza</span>
+        </NavLink>
         <div className="main-module-tabs section-tabs">
           {navigationAreas.map((area) => {
             const isActive = activeArea?.id === area.id;
