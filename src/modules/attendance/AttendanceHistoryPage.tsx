@@ -10,6 +10,7 @@ import type {
   SubjectCourseLink
 } from "../../shared/db/types";
 import { useStudentDisplay } from "../../shared/hooks/useStudentDisplay";
+import { SubnavActions } from "../../shared/ui/SubnavActions";
 
 const STATUS_LABELS: Record<AttendanceEntry["status"], string> = {
   present: "Presente",
@@ -268,8 +269,10 @@ export function AttendanceHistoryPage() {
               <h1 id="attendance-history-title">Historial de asistencia</h1>
               <p>{formatMonth(selectedMonth)}</p>
             </div>
-            <NavLink className="btn secondary" to="/today">Registrar en Hoy</NavLink>
           </header>
+          <SubnavActions>
+            <NavLink className="subnav-link" to="/today">Registrar en Hoy</NavLink>
+          </SubnavActions>
 
           <section className="metric-grid compact" aria-label="Resumen mensual de asistencia">
             <article className="metric-item"><strong>Sesiones</strong><div>{summary.sessions}</div></article>

@@ -889,16 +889,18 @@ export function PlannerPage() {
           <div className="context-sidebar-separator" aria-hidden="true" />
           <div className="planner-week-controls">
             <strong>Semana</strong>
-            <span className="pill">{formatWeekRange(weekStart)}</span>
-            <div className="inline-form">
-              <button type="button" className="btn secondary" onClick={() => setWeekStart((current) => addDays(current, -7))}>
-                Anterior
+            <div className="planner-week-stepper">
+              <button type="button" className="icon-btn" aria-label="Semana anterior" onClick={() => setWeekStart((current) => addDays(current, -7))}>
+                ‹
               </button>
+              <span className="planner-week-range">{formatWeekRange(weekStart)}</span>
+              <button type="button" className="icon-btn" aria-label="Semana siguiente" onClick={() => setWeekStart((current) => addDays(current, 7))}>
+                ›
+              </button>
+            </div>
+            <div className="inline-form planner-week-actions">
               <button type="button" className="btn secondary" onClick={() => setWeekStart(startOfWeek(new Date(), weekStartsOn))}>
                 Hoy
-              </button>
-              <button type="button" className="btn secondary" onClick={() => setWeekStart((current) => addDays(current, 7))}>
-                Siguiente
               </button>
               <button type="button" className="btn secondary" disabled={!selectedClassId} onClick={exportPrintableWeek}>
                 Imprimir

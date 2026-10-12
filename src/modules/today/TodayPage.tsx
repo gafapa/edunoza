@@ -38,6 +38,7 @@ import { buildAllPresentDraft } from "./todayAttendance";
 import { isTodayDraft, type TodayDraft } from "./todayDraft";
 import { useRecoverableDraft } from "../../shared/hooks/useRecoverableDraft";
 import { DraftRecoveryNotice } from "../../shared/ui/DraftRecoveryNotice";
+import { SubnavActions } from "../../shared/ui/SubnavActions";
 import { ResourceManager } from "../../shared/resources/ResourceManager";
 import { journalEntryOwnerId } from "../../shared/resources/resources";
 import { BehaviorControls } from "./BehaviorControls";
@@ -891,6 +892,23 @@ export function TodayPage() {
           <p>Agenda, asistencia y registro rápido.</p>
         </div>
       </header>
+      {selectedSlot && students.length > 0 ? (
+        <SubnavActions>
+          <span
+            className={`subnav-chip ${isClassSessionSaved ? "success" : "warning"}`}
+            role="status"
+            aria-live="polite"
+          >
+            {isSavingAttendance || isSavingWork
+              ? "Guardando..."
+              : isClassSessionSaved
+                ? "Guardado"
+                : attendanceEntries.length === 0
+                  ? "Sin registrar"
+                  : "Cambios sin guardar"}
+          </span>
+        </SubnavActions>
+      ) : null}
 
       <div className="today-layout">
         <aside className="courses-list-panel today-slot-rail" aria-label="Clases del día">

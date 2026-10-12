@@ -13,6 +13,7 @@ export function CommentBankPage() {
   const [feedbackText, setFeedbackText] = useState("");
   const [editingFeedbackId, setEditingFeedbackId] = useState("");
   const [feedbackNotice, setFeedbackNotice] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<FeedbackCommentCategory | "all">("all");
 
   const loadFeedbackComments = async (): Promise<void> => {
     const rows = await db.feedbackComments.toArray();
@@ -60,6 +61,17 @@ export function CommentBankPage() {
     setFeedbackNotice("Comentario eliminado.");
   };
 
+  const usedCategories = FEEDBACK_COMMENT_CATEGORIES.filter((category) =>
+    feedbackComments.some((comment) => comment.category === category)
+  );
+  // Fall back to every category once the filtered one has no comments left.
+  const activeFilter = categoryFilter !== "all" && usedCategories.length > 1 && usedCategories.includes(categoryFilter)
+    ? categoryFilter
+    : "all";
+  const visibleComments = activeFilter === "all"
+    ? feedbackComments
+    : feedbackComments.filter((comment) => comment.category === activeFilter);
+
   return (
     <article className="management-card">
       <section className="detail-section" aria-labelledby="feedback-bank-title">
@@ -95,9 +107,24 @@ export function CommentBankPage() {
           </div>
         </div>
         <p className="feedback-bank-notice" role="status" aria-live="polite">{feedbackNotice}</p>
-        {feedbackComments.length > 0 ? (
+        {usedCategories.length > 1 ? (
+          <div className="feedback-bank-filters" role="group" aria-label="Filtrar por categoría">
+            {(["all", ...usedCategories] as const).map((category) => (
+              <button
+                key={category}
+                type="button"
+                className={`feedback-bank-filter${activeFilter === category ? " active" : ""}`}
+                aria-pressed={activeFilter === category}
+                onClick={() => setCategoryFilter(category)}
+              >
+                {category === "all" ? "Todas" : feedbackCategoryLabel(category)}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        {visibleComments.length > 0 ? (
           <ul className="feedback-bank-list">
-            {feedbackComments.map((comment) => (
+            {visibleComments.map((comment) => (
               <li key={comment.id}>
                 <div>
                   <span>{feedbackCategoryLabel(comment.category)}</span>

@@ -5,6 +5,7 @@ import { setSelectedClass, setSelectedSubject } from "../../app/store";
 import { db } from "../db/database";
 import type { ClassGroup, Subject } from "../db/types";
 import { Modal } from "./Modal";
+import { setSubnavActionsTarget } from "./SubnavActions";
 import {
   findActiveNavigationArea,
   matchesNavigationPath,
@@ -133,6 +134,10 @@ export function TopTabs() {
         className={`top-tabs${showSecondaryNavigation ? " has-secondary" : ""}`}
         aria-label="Áreas principales"
       >
+        <NavLink to="/today" className="app-brand" aria-label="Edunoza, ir a Hoy">
+          <span className="app-brand-mark" aria-hidden="true">E</span>
+          <span aria-hidden="true">Edunoza</span>
+        </NavLink>
         <div className="main-module-tabs section-tabs">
           {navigationAreas.map((area) => {
             const isActive = activeArea?.id === area.id;
@@ -262,6 +267,7 @@ export function TopTabs() {
               );
             })}
           </div>
+          <div className="workflow-subnav-actions" ref={setSubnavActionsTarget} />
         </nav>
       ) : null}
 

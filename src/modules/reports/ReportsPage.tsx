@@ -1492,6 +1492,30 @@ export function ReportsPage() {
       <div className="courses-layout reports-layout">
         <aside className="courses-list-panel">
           <ContextSidebarTabs includeSubjects={false} />
+          {reportViewState === "ready" ? (
+            <section className="reports-period-filter" aria-labelledby="reports-period-title">
+              <div className="context-sidebar-separator" aria-hidden="true" />
+              <strong id="reports-period-title">Periodo del informe</strong>
+              <label className="detail-field compact-field">
+                <span>Desde</span>
+                <input className="input" type="date" value={periodStart} max={periodEnd || undefined} onChange={(event) => setPeriodStart(event.target.value)} />
+              </label>
+              <label className="detail-field compact-field">
+                <span>Hasta</span>
+                <input className="input" type="date" value={periodEnd} min={periodStart || undefined} onChange={(event) => setPeriodEnd(event.target.value)} />
+              </label>
+              <button type="button" className="btn secondary" disabled={!periodStart && !periodEnd} onClick={() => { setPeriodStart(""); setPeriodEnd(""); }}>
+                Todo el curso
+              </button>
+              {undatedAssessmentCount > 0 ? (
+                <p className="hint" role="status">
+                  {undatedAssessmentCount} prueba{undatedAssessmentCount === 1 ? "" : "s"} manual
+                  {undatedAssessmentCount === 1 ? "" : "es"} sin fecha se excluyen del intervalo.
+                  Así se evita mezclar evaluaciones de periodos distintos.
+                </p>
+              ) : null}
+            </section>
+          ) : null}
         </aside>
 
         <section className="course-detail-panel">
@@ -1528,32 +1552,7 @@ export function ReportsPage() {
             </div>
           ) : (
           <>
-          <section className="detail-section flush reports-period-filter" aria-labelledby="reports-period-title">
-            <div>
-              <h1 id="reports-period-title">Informes</h1>
-              <p>Delimita los registros fechados que se incluirán en cálculos y exportaciones.</p>
-            </div>
-            <div className="reports-period-controls">
-              <label className="detail-field compact-field">
-                <span>Desde</span>
-                <input className="input" type="date" value={periodStart} max={periodEnd || undefined} onChange={(event) => setPeriodStart(event.target.value)} />
-              </label>
-              <label className="detail-field compact-field">
-                <span>Hasta</span>
-                <input className="input" type="date" value={periodEnd} min={periodStart || undefined} onChange={(event) => setPeriodEnd(event.target.value)} />
-              </label>
-              <button type="button" className="btn secondary" disabled={!periodStart && !periodEnd} onClick={() => { setPeriodStart(""); setPeriodEnd(""); }}>
-                Todo el curso
-              </button>
-            </div>
-            {undatedAssessmentCount > 0 ? (
-              <p className="hint" role="status">
-                {undatedAssessmentCount} prueba{undatedAssessmentCount === 1 ? "" : "s"} manual
-                {undatedAssessmentCount === 1 ? "" : "es"} sin fecha se excluyen del intervalo.
-                Así se evita mezclar evaluaciones de periodos distintos.
-              </p>
-            ) : null}
-          </section>
+          <h1 className="sr-only">Informes</h1>
           <section className="detail-section flush">
             <div className="metric-grid compact">
               <article className="metric-item">

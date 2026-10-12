@@ -1,5 +1,4 @@
 import { type DragEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import { NavLink } from "react-router-dom";
 import { useAppSelector } from "../../app/hooks";
 import { db } from "../../shared/db/database";
 import type {
@@ -39,6 +38,7 @@ import {
 } from "../../shared/gradebook/manualAssessments";
 import { useStudentDisplay } from "../../shared/hooks/useStudentDisplay";
 import { ContextSidebarTabs } from "../../shared/ui/ContextSidebarTabs";
+import { SubnavActions } from "../../shared/ui/SubnavActions";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
 import { parsePastedGradeGrid } from "../../shared/gradebook/bulkGrades";
 import { toLocalIsoDate } from "../../shared/utils/date";
@@ -106,6 +106,7 @@ export function GradebookPage() {
 
   const [activeGradebookTab, setActiveGradebookTab] = useState<"tree" | "grades" | "table">("tree");
   const [gradebookNotice, setGradebookNotice] = useState("");
+  const [currentPeriod, setCurrentPeriod] = useState<{ name: string; status: "open" | "closed" } | null>(null);
   const [isSavingGradebookWeights, setIsSavingGradebookWeights] = useState(false);
   const [includedTasks, setIncludedTasks] = useState<IncludedTaskRow[]>([]);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(new Set());
@@ -928,6 +929,21 @@ export function GradebookPage() {
     setGradebookNotice("Carpeta eliminada.");
     await loadData();
   };
+
+  useEffect(() => {
+    let active = true;
+    if (!selectedClassId) {
+      setCurrentPeriod(null);
+      return;
+    }
+    const today = toLocalIsoDate();
+    void db.academicPeriods.where("classId").equals(selectedClassId).toArray().then((periods) => {
+      if (!active) return;
+      const period = periods.find((item) => today >= item.startDate && today <= item.endDate);
+      setCurrentPeriod(period ? { name: period.name, status: period.status } : null);
+    });
+    return () => { active = false; };
+  }, [selectedClassId]);
 
   const isClosedAcademicPeriod = async (academicPeriodId?: string): Promise<boolean> => {
     if (!academicPeriodId) return false;
@@ -2052,10 +2068,14 @@ export function GradebookPage() {
               <h1>Cuaderno de notas</h1>
               <p>{selectedSubjectId ? gradebookRootName : "Selecciona curso y asignatura"}</p>
             </div>
-            <NavLink className="btn secondary" to="/management/periods">
-              Periodos y cierre
-            </NavLink>
           </header>
+          {currentPeriod ? (
+            <SubnavActions>
+              <span className={`subnav-chip ${currentPeriod.status === "open" ? "success" : "neutral"}`} role="status">
+                {currentPeriod.name} · {currentPeriod.status === "open" ? "abierto" : "cerrado"}
+              </span>
+            </SubnavActions>
+          ) : null}
           <div className="gradebook-internal-tabs section-tabs" role="group" aria-label="Secciones del cuaderno">
             <button
               type="button"
@@ -2063,7 +2083,7 @@ export function GradebookPage() {
               className={`section-tab ${activeGradebookTab === "tree" ? "active" : ""}`}
               onClick={() => void changeGradebookTab("tree")}
             >
-              <span>Organización</span>
+              <span>Estructura</span>
             </button>
             <button
               type="button"

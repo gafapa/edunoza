@@ -1,0 +1,1134 @@
+/*
+ * Redesign shell: flat page surface, white app bar with pill areas,
+ * underline section tabs and a centered content column.
+ * Loaded last so it overrides the legacy shell rules in styles.css.
+ */
+:root {
+  --rd-ink: #15223b;
+  --rd-ink-2: #2b3a56;
+  --rd-muted: #51607e;
+  --rd-line: #d8e0ef;
+  --rd-line-soft: #eef2f9;
+  --rd-page: #f4f7fd;
+  --rd-accent: #1f4b99;
+  --rd-accent-strong: #163a73;
+  --rd-accent-tint: #e8f0ff;
+  --rd-content-max: 1376px;
+  --rd-gutter: 32px;
+  color: var(--rd-ink);
+  background: var(--rd-page);
+}
+
+body {
+  background: var(--rd-page);
+}
+
+.acet-beam-bg {
+  display: none;
+}
+
+.app-brand {
+  display: none;
+}
+
+.top-tabs,
+.top-tabs.has-secondary {
+  margin: 0;
+  border: 0;
+  border-bottom: 1px solid var(--rd-line);
+  border-radius: 0;
+  background: #ffffff;
+  backdrop-filter: none;
+}
+
+.workflow-subnav {
+  border: 0;
+  border-bottom: 1px solid var(--rd-line);
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.workflow-subnav-label {
+  display: none;
+}
+
+@media (min-width: 841px) {
+  .top-tabs,
+  .top-tabs.has-secondary {
+    min-height: 56px;
+    gap: 16px;
+    padding: 0 max(var(--rd-gutter), calc((100% - var(--rd-content-max)) / 2));
+    flex-wrap: nowrap;
+  }
+
+  .app-brand {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    flex: 0 0 auto;
+    color: var(--rd-ink);
+    font-size: 1rem;
+    font-weight: 800;
+    text-decoration: none;
+  }
+
+  .app-brand-mark {
+    width: 30px;
+    height: 30px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: var(--rd-accent);
+    color: #ffffff;
+    font-size: 0.875rem;
+    font-weight: 800;
+  }
+
+  .main-module-tabs.section-tabs {
+    justify-content: center;
+    gap: 2px;
+  }
+
+  .main-module-tabs .section-tab.compact,
+  .main-module-tabs .section-tab.compact.featured {
+    min-width: 0;
+    min-height: 32px;
+    padding: 6px 14px;
+    border: 0;
+    border-radius: 999px;
+    background: transparent;
+    color: var(--rd-muted);
+    font-size: 0.82rem;
+    font-weight: 600;
+    box-shadow: none;
+  }
+
+  .main-module-tabs .section-tab.compact:hover:not(.active) {
+    background: var(--rd-line-soft);
+    color: var(--rd-ink);
+  }
+
+  .main-module-tabs .section-tab.compact.active,
+  .main-module-tabs .section-tab.compact.featured.active {
+    background: var(--rd-accent-tint);
+    color: var(--rd-accent-strong);
+    font-weight: 700;
+    box-shadow: none;
+  }
+
+  .main-module-tabs .section-tab.compact.featured::before,
+  .main-module-tabs .section-tab.compact svg,
+  .right-module-tabs .section-tab.compact svg,
+  .workflow-subnav-list .section-tab.compact svg {
+    display: none;
+  }
+
+  .right-module-tabs.section-tabs {
+    margin-left: 0;
+  }
+
+  .right-module-tabs .section-tab.compact {
+    min-width: 0;
+    min-height: 36px;
+    padding: 0 14px;
+    border: 1px solid var(--rd-line);
+    border-radius: 8px;
+    background: #ffffff;
+    color: var(--rd-ink-2);
+    font-size: 0.82rem;
+    font-weight: 700;
+    box-shadow: none;
+  }
+
+  .right-module-tabs .section-tab.compact.active {
+    border-color: var(--rd-accent);
+    background: var(--rd-accent-tint);
+    color: var(--rd-accent-strong);
+    font-weight: 800;
+    box-shadow: none;
+  }
+
+  .workflow-subnav {
+    width: calc(100% - 2 * var(--rd-gutter));
+    max-width: var(--rd-content-max);
+    margin: 16px auto 0;
+    padding: 0;
+  }
+
+  .workflow-subnav-list.section-tabs {
+    gap: 24px;
+  }
+
+  .workflow-subnav-list .section-tab.compact {
+    min-width: 0;
+    min-height: 0;
+    margin-bottom: -1px;
+    padding: 6px 0;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    border-radius: 0;
+    background: transparent;
+    color: var(--rd-muted);
+    font-size: 0.82rem;
+    font-weight: 600;
+    box-shadow: none;
+  }
+
+  .workflow-subnav-list .section-tab.compact:hover {
+    border-color: transparent;
+    border-bottom-color: var(--rd-line);
+    background: transparent;
+    color: var(--rd-ink);
+  }
+
+  .workflow-subnav-list .section-tab.compact.active {
+    border-color: transparent;
+    border-bottom-color: var(--rd-accent);
+    background: transparent;
+    color: var(--rd-ink);
+    font-weight: 700;
+    box-shadow: none;
+  }
+
+  .main-panel {
+    max-width: calc(var(--rd-content-max) + 2 * var(--rd-gutter));
+    margin: 0 auto;
+    padding: 14px var(--rd-gutter) 64px;
+    box-sizing: border-box;
+  }
+}
+
+@media (max-width: 840px) {
+  .workflow-subnav {
+    margin: 0 10px;
+  }
+
+  .workflow-subnav-list .section-tab.compact {
+    border-radius: 0;
+    border: 0;
+    border-bottom: 2px solid transparent;
+    background: transparent;
+    box-shadow: none;
+  }
+
+  .workflow-subnav-list .section-tab.compact.active {
+    border-bottom-color: var(--rd-accent);
+    background: transparent;
+    color: var(--rd-ink);
+    box-shadow: none;
+  }
+}
+
+/* ---- Surfaces: page content sits on the page; panels and sections are the cards. ---- */
+.module-card {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+}
+
+.module-card h2,
+.detail-section h2,
+.detail-section h3,
+.detail-section h5 {
+  color: var(--rd-ink);
+}
+
+.courses-list-panel {
+  border: 1px solid var(--rd-line);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px;
+}
+
+.course-detail-panel {
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  padding: 0;
+}
+
+.detail-section {
+  border: 1px solid var(--rd-line);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px 14px;
+}
+
+.section-tab {
+  border-radius: 8px;
+  color: var(--rd-ink-2);
+}
+
+.section-tab.active {
+  border-bottom-color: transparent;
+  background: var(--rd-accent-tint);
+  color: var(--rd-accent-strong);
+  box-shadow: inset 0 0 0 1px var(--rd-accent);
+}
+
+.section-tab small {
+  color: var(--rd-muted);
+}
+
+.btn {
+  border-radius: 8px;
+}
+
+a.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+}
+
+.btn.secondary {
+  background: #ffffff;
+  color: var(--rd-ink-2);
+  border-color: var(--rd-line);
+}
+
+.btn.secondary:hover:not(:disabled) {
+  background: var(--rd-line-soft);
+  border-color: #b7c6e3;
+  color: var(--rd-ink);
+}
+
+.input {
+  border-color: var(--rd-line);
+  background: #ffffff;
+  color: var(--rd-ink);
+}
+
+.notice {
+  background: var(--rd-accent-tint);
+  border-color: #c9d6ea;
+  color: var(--rd-accent-strong);
+}
+
+.empty-state {
+  border-color: #c9d6ea;
+  background: #ffffff;
+  color: var(--rd-muted);
+}
+
+.hint {
+  color: var(--rd-muted);
+}
+
+.pill {
+  background: var(--rd-accent-tint);
+  color: var(--rd-accent-strong);
+}
+
+.metric-item {
+  border-color: var(--rd-line-soft);
+  background: #ffffff;
+}
+
+th,
+td {
+  border-bottom-color: var(--rd-line-soft);
+}
+
+/* Compact density for mouse users; touch keeps 44px targets. */
+@media (min-width: 841px) and (pointer: fine) {
+  :is(main, .modal-panel, .app-lock-panel) .compact-field > :is(input, select, .ai-secret-input) {
+    min-height: 32px;
+  }
+
+  .btn {
+    min-height: 32px;
+    padding: 5px 12px;
+    font-size: 0.82rem;
+  }
+
+  .input {
+    padding: 5px 8px;
+    font-size: 0.85rem;
+  }
+
+  .section-tab {
+    padding: 6px 10px;
+  }
+}
+
+/* ---- Sidebar lists: left-aligned rows, tinted active row with accent outline. ---- */
+.courses-list.section-tabs {
+  border-right: 0;
+  padding-right: 0;
+}
+
+.courses-list.section-tabs .section-tab {
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  color: var(--rd-ink-2);
+  text-align: left;
+}
+
+.courses-list.section-tabs .section-tab:hover:not(.active) {
+  background: var(--rd-line-soft);
+}
+
+.courses-list.section-tabs .section-tab.active {
+  border-color: var(--rd-accent);
+  background: var(--rd-accent-tint);
+  color: var(--rd-accent-strong);
+  box-shadow: none;
+  font-weight: 700;
+}
+
+.courses-list.section-tabs .section-tab.drop-target {
+  border: 2px dashed var(--rd-accent);
+  background: #f3f7ff;
+}
+
+.context-sidebar-tabs,
+.context-sidebar-separator {
+  border-color: var(--rd-line-soft);
+}
+
+.icon-btn {
+  border-color: var(--rd-line);
+  color: var(--rd-ink-2);
+}
+
+.icon-btn:hover {
+  background: var(--rd-line-soft);
+}
+
+@media (min-width: 841px) and (pointer: fine) {
+  .courses-list.section-tabs .section-tab {
+    min-height: 32px;
+    padding: 6px 10px;
+  }
+
+  .icon-btn {
+    width: 32px;
+    height: 32px;
+    flex-basis: 32px;
+  }
+
+  .icon-btn.has-label {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 5px 12px;
+    font-size: 0.82rem;
+  }
+}
+
+/* ---- Page chrome: informative titles stay for assistive tech; actions remain visible. ---- */
+:is(.today-header, .workflow-page-header, .evaluation-page-header, .attendance-history-header) {
+  justify-content: flex-end;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+:is(.today-header, .workflow-page-header, .evaluation-page-header, .attendance-history-header) > div:first-child {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---- Summary metrics read as compact chips. ---- */
+.metric-grid.compact {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.metric-grid.compact .metric-item {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 2px 10px;
+  border: 0;
+  border-radius: 999px;
+  background: #e9eef8;
+  color: var(--rd-ink-2);
+  font-size: 0.78rem;
+}
+
+.metric-grid.compact .metric-item strong {
+  order: 2;
+  font-weight: 600;
+}
+
+.metric-grid.compact .metric-item > div {
+  order: 1;
+  font-weight: 800;
+}
+
+/* ---- Gradebook views use a segmented control, distinct from the section tabs. ---- */
+.gradebook-internal-tabs.section-tabs {
+  display: inline-flex;
+  flex-wrap: nowrap;
+  width: auto;
+  max-width: 100%;
+  gap: 2px;
+  margin-bottom: 12px;
+  padding: 3px;
+  border: 0;
+  border-radius: 10px;
+  background: #e9eef8;
+}
+
+.gradebook-internal-tabs .section-tab {
+  min-width: 0;
+  align-items: center;
+  justify-content: center;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rd-ink-2);
+  font-weight: 700;
+  box-shadow: none;
+}
+
+.gradebook-internal-tabs .section-tab.active {
+  background: #ffffff;
+  color: var(--rd-accent-strong);
+  font-weight: 800;
+  box-shadow: 0 1px 3px rgba(21, 34, 59, 0.12);
+}
+
+@media (min-width: 841px) and (pointer: fine) {
+  .gradebook-internal-tabs .section-tab {
+    min-height: 30px;
+    font-size: 0.8rem;
+  }
+}
+
+/* ---- Tables: quieter headers and compact cells on desktop. ---- */
+@media (min-width: 841px) {
+  th {
+    color: var(--rd-ink-2);
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+
+  td {
+    font-size: 0.85rem;
+  }
+}
+
+/* ---- Agenda: summary as chips. ---- */
+.agenda-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agenda-metric {
+  display: inline-flex;
+  min-height: 0;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 12px;
+  border-radius: 999px;
+  text-align: left;
+}
+
+.agenda-metric strong {
+  font-size: 0.95rem;
+}
+
+.agenda-metric span {
+  font-size: 0.75rem;
+}
+
+/* ---- Tutor: shared palette, chip metrics, segmented areas, form beside list. ---- */
+.tutor-page {
+  --tutor-ink: var(--rd-ink);
+  --tutor-paper: #ffffff;
+  --tutor-line: var(--rd-line);
+  --tutor-accent: var(--rd-accent);
+}
+
+.tutor-hero {
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+}
+
+.tutor-hero-metrics {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tutor-hero-metrics span {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 3px 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #e9eef8;
+  color: var(--rd-ink-2);
+}
+
+.tutor-hero-metrics strong {
+  font-size: 0.95rem;
+}
+
+.tutor-hero-metrics .urgent {
+  background: #fdeceb;
+}
+
+.tutor-tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  justify-self: start;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 10px;
+  background: #e9eef8;
+}
+
+.tutor-tabs button {
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--rd-ink-2);
+  font-weight: 700;
+}
+
+.tutor-tabs button.active {
+  background: #ffffff;
+  color: var(--rd-accent-strong);
+  font-weight: 800;
+  box-shadow: 0 1px 3px rgba(21, 34, 59, 0.12);
+}
+
+.tutor-panel {
+  border-color: var(--rd-line);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.tutor-page fieldset.tutor-form-grid {
+  border: 1px solid var(--rd-line);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.tutor-page input:not([type="checkbox"]),
+.tutor-page select,
+.tutor-page textarea {
+  border-color: var(--rd-line);
+}
+
+@media (min-width: 1100px) {
+  .tutor-panel {
+    grid-template-columns: minmax(320px, 400px) minmax(0, 1fr);
+    align-items: start;
+  }
+
+  .tutor-panel > .tutor-panel-heading {
+    grid-column: 1 / -1;
+  }
+
+  .tutor-panel > :is(.tutor-card-list, .tutor-group-grid) {
+    grid-column: 2;
+    grid-row: 2 / span 20;
+    margin-top: 0;
+  }
+
+  .tutor-panel > :not(.tutor-panel-heading, .tutor-card-list, .tutor-group-grid, .handoff-layout, .handoff-preview) {
+    grid-column: 1;
+  }
+
+  .tutor-panel > :is(.handoff-layout, .handoff-preview) {
+    grid-column: 1 / -1;
+  }
+
+  .tutor-panel .tutor-form-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .tutor-panel .tutor-form-grid .wide {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (min-width: 841px) and (pointer: fine) {
+  .tutor-tabs button {
+    min-height: 30px;
+    padding: 0 14px;
+    font-size: 0.8rem;
+  }
+
+  .tutor-page input:not([type="checkbox"]),
+  .tutor-page select {
+    min-height: 32px;
+    padding: 5px 8px;
+  }
+}
+
+/* ---- Reports: the page title is implied by the section tab. ---- */
+.reports-page .reports-period-filter {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 8px;
+}
+
+.reports-page .reports-period-filter > strong {
+  color: var(--rd-muted);
+  font-size: 0.75rem;
+}
+
+.reports-page .reports-period-filter .compact-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-height: 0;
+}
+
+.reports-page .reports-period-filter .compact-field > input {
+  flex: none;
+  height: auto;
+}
+
+@media (max-width: 840px) {
+  .reports-page .reports-period-filter {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: end;
+  }
+
+  .reports-page .reports-period-filter > :is(.context-sidebar-separator, strong, .btn, .hint) {
+    grid-column: 1 / -1;
+  }
+}
+
+.reports-page .reports-period-filter .hint {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: #fbeee0;
+  color: #8a4600;
+  font-size: 0.72rem;
+}
+
+.report-intent-tabs button,
+.report-channel-tabs button {
+  min-height: 0;
+  border-color: var(--rd-line);
+  background: #ffffff;
+  color: var(--rd-ink-2);
+}
+
+.report-intent-tabs button.active,
+.report-channel-tabs button.active {
+  border-color: var(--rd-accent);
+  background: var(--rd-accent-tint);
+  color: var(--rd-accent-strong);
+  box-shadow: inset 0 0 0 1px var(--rd-accent);
+}
+
+/* ---- Detail headings: section-sized, not page-sized. ---- */
+.course-detail-header h2 {
+  margin: 0;
+  color: var(--rd-ink);
+  font-size: 1rem;
+  font-weight: 800;
+}
+
+.course-detail-header h3 {
+  color: var(--rd-ink);
+  font-size: 0.9rem;
+}
+
+.tutor-panel h2 {
+  font-size: 1rem;
+}
+
+.tutor-panel-heading p {
+  font-size: 0.8rem;
+}
+
+.agenda-filters select,
+.tutor-page select {
+  font-weight: 500;
+}
+
+/* ---- Desktop mouse density: one override that outranks the touch-first rules. ---- */
+@media (min-width: 841px) and (pointer: fine) {
+  #main-content :is(
+    .btn,
+    .icon-btn.has-label,
+    .today-date-step,
+    .today-date-today,
+    .today-date-picker,
+    .today-status-option,
+    .today-note-button,
+    .today-close-session,
+    .no-context-cta,
+    .group-context-selector .input,
+    .management-group-selector .input,
+    .attendance-history-sidebar input.input,
+    .year-stepper-btn,
+    .schedule-slot-pill,
+    .database-disclosure > summary,
+    .data-backup-navigation .section-tab,
+    .nextcloud-fields input,
+    .nextcloud-fields select,
+    .nextcloud-fields button,
+    .ai-credential-meta a,
+    .ai-text-button,
+    .agenda-filters select,
+    .agenda-item-action,
+    .tutor-student-picker label,
+    .handoff-student-list label,
+    .student-detail-tabs button,
+    .time-select-input,
+    select.input,
+    input.input:not([type="checkbox"]):not([type="radio"])
+  ) {
+    min-height: 32px;
+  }
+
+  #main-content :is(.year-stepper) {
+    min-height: 32px;
+  }
+
+  #main-content :is(.year-stepper-btn, .schedule-slot-pill, .today-date-step, .today-date-today) {
+    min-width: 36px;
+  }
+
+  #main-content .schedule-slot-pill {
+    border-radius: 8px;
+  }
+}
+
+/* ---- Hoy: slot rail rows read left to right. ---- */
+.today-slot-list.courses-list.section-tabs .section-tab {
+  justify-content: stretch;
+  justify-items: stretch;
+  min-height: 0;
+}
+
+.today-slot-list.courses-list.section-tabs .section-tab.active {
+  border-color: var(--rd-accent);
+  background: var(--rd-accent-tint);
+  color: var(--rd-accent-strong);
+}
+
+/* ---- Detail panels without inner sections still get a card. ---- */
+.course-detail-panel:not(:has(.detail-section, .resource-manager, .tutor-panel, .ai-settings-page, .moodle-settings-page)) {
+  border: 1px solid var(--rd-line);
+  border-radius: 12px;
+  background: #ffffff;
+  padding: 12px 14px;
+}
+
+/* ---- Schedule block type toggle matches the segmented controls. ---- */
+.schedule-block-type-control {
+  border: 0;
+  border-radius: 8px;
+  background: #e9eef8;
+}
+
+.schedule-block-type-option {
+  color: var(--rd-ink-2);
+}
+
+.schedule-block-type-option.active {
+  background: #ffffff;
+  color: var(--rd-accent-strong);
+  box-shadow: 0 1px 3px rgba(21, 34, 59, 0.12);
+}
+
+.schedule-block-type-option.break.active {
+  background: #fbeee0;
+  color: #8a4600;
+  box-shadow: none;
+}
+
+@media (min-width: 841px) and (pointer: fine) {
+  #main-content .schedule-block-type-option {
+    min-height: 26px;
+    font-size: 0.78rem;
+  }
+}
+
+/* ---- Configuration titles at section scale; denser settings menu. ---- */
+:is(.ai-settings-heading, .moodle-page-heading, .student-import-page-heading) :is(h1, h2) {
+  margin: 0;
+  color: var(--rd-ink);
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+:is(.ai-settings-heading, .moodle-page-heading, .student-import-page-heading) p {
+  margin: 2px 0 0;
+  color: var(--rd-muted);
+  font-size: 0.82rem;
+}
+
+.courses-list.section-tabs .section-tab {
+  font-size: 0.85rem;
+}
+
+/* ---- Mobile navigation: flat tiles in the same palette. ---- */
+@media (max-width: 840px) {
+  .main-module-tabs .section-tab.compact,
+  .main-module-tabs .section-tab.compact.featured,
+  .right-module-tabs .section-tab.compact {
+    border: 1px solid var(--rd-line);
+    background: #ffffff;
+    color: var(--rd-ink-2);
+    box-shadow: none;
+  }
+
+  .main-module-tabs .section-tab.compact.featured::before {
+    display: none;
+  }
+
+  .main-module-tabs .section-tab.compact.active,
+  .main-module-tabs .section-tab.compact.featured.active,
+  .right-module-tabs .section-tab.compact.active {
+    border-color: var(--rd-accent);
+    background: var(--rd-accent-tint);
+    color: var(--rd-accent-strong);
+    box-shadow: none;
+  }
+
+  .top-tabs {
+    padding: 8px 10px;
+  }
+}
+
+/* ---- Unit filters as wrapping pills (Tareas, Evaluación). ---- */
+.courses-list.section-tabs.context-sidebar-list[aria-label="Unidades"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 4px;
+  max-height: none;
+  overflow: visible;
+}
+
+.courses-list.section-tabs.context-sidebar-list[aria-label="Unidades"] .section-tab {
+  width: auto;
+  min-height: 28px;
+  padding: 3px 10px;
+  border: 1px solid var(--rd-line);
+  border-radius: 999px;
+  font-size: 0.78rem;
+}
+
+.courses-list.section-tabs.context-sidebar-list[aria-label="Unidades"] .section-tab.active {
+  border-color: var(--rd-accent);
+}
+
+@media (max-width: 840px), (pointer: coarse) {
+  .courses-list.section-tabs.context-sidebar-list[aria-label="Unidades"] .section-tab {
+    min-height: 40px;
+    padding: 6px 12px;
+  }
+}
+
+/* ---- Section tab row: page status chips and quick actions ---- */
+.workflow-subnav-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.workflow-subnav-actions:empty {
+  display: none;
+}
+
+.subnav-chip,
+.subnav-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.subnav-status {
+  padding: 0;
+  color: var(--rd-muted);
+  font-weight: 600;
+}
+
+.subnav-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.subnav-chip.success { background: #e4f7ec; color: #157a4a; }
+.subnav-chip.warning { background: #fbeee0; color: #8a4600; }
+.subnav-chip.neutral { background: #e9eef8; color: var(--rd-ink-2); }
+
+.subnav-link {
+  color: var(--rd-accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.subnav-actions-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ---- Evaluar: task hours as chips, empty-instrument actions ---- */
+.task-hour-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-hour-chip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--rd-line);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--rd-ink-2);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.task-hour-chip span + span {
+  color: var(--rd-muted);
+}
+
+.task-hour-chip.active {
+  border-color: var(--rd-accent);
+  background: var(--rd-accent-tint);
+  color: var(--rd-accent-strong);
+}
+
+.task-hour-chip.active span + span {
+  color: var(--rd-accent-strong);
+}
+
+.evaluation-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (pointer: coarse), (max-width: 840px) {
+  .task-hour-chip { min-height: 40px; }
+}
+
+/* ---- Planner: compact week stepper in the sidebar ---- */
+.planner-week-stepper {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.planner-week-range {
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--rd-ink);
+}
+
+.planner-week-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+@media (min-width: 841px) {
+  .workflow-subnav {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+}
+
+@media (max-width: 840px) {
+  .workflow-subnav-actions {
+    margin: 0;
+    padding: 6px 0;
+  }
+}
+
+/* ---- Comment bank: category filter pills ---- */
+.feedback-bank-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.feedback-bank-filter {
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--rd-line);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--rd-ink-2);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.feedback-bank-filter.active {
+  border-color: var(--rd-accent);
+  background: var(--rd-accent);
+  color: #ffffff;
+}
+
+@media (pointer: coarse), (max-width: 840px) {
+  .feedback-bank-filter { min-height: 40px; }
+}
+
+/* Configuration pages built as a single management card share the section title scale. */
+.management-card > .detail-section > h1:first-child {
+  margin: 0;
+  color: var(--rd-ink);
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.reports-page .reports-period-filter .compact-field > span {
+  color: var(--rd-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
