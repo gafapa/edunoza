@@ -27,6 +27,7 @@ import { matchesTaskScope } from "../../shared/gradebook/calculations";
 import { useStudentDisplay } from "../../shared/hooks/useStudentDisplay";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
 import { ClassGroupSelect } from "../../shared/ui/ClassGroupSelect";
+import { SubnavActions } from "../../shared/ui/SubnavActions";
 import { toLocalIsoDate } from "../../shared/utils/date";
 import {
   filterTaskSessionsByAcademicContext,
@@ -961,21 +962,21 @@ export function AttendancePage() {
               <h1>Evaluar tareas</h1>
               <p>{[selectedWorkClassName, selectedWorkSubjectName].filter(Boolean).join(" · ") || "Selecciona un contexto"}</p>
             </div>
-            {selectedTaskSessionForDay ? (
-              <NavLink className="btn secondary" to={selectedWorkTodayLink}>Abrir clase en Hoy</NavLink>
-            ) : null}
           </header>
+          <SubnavActions>
+            {isSavingTask ? (
+              <span className="subnav-status" role="status" aria-live="polite">Guardando registro de tarea...</span>
+            ) : null}
+            {selectedTaskSessionForDay ? (
+              <NavLink className="subnav-link" to={selectedWorkTodayLink}>Abrir clase en Hoy</NavLink>
+            ) : null}
+          </SubnavActions>
           {!selectedClassId || !selectedSubjectId ? (
             <p className="hint">Selecciona curso y asignatura para revisar el trabajo.</p>
           ) : null}
 
           {selectedClassId && selectedSubjectId && selectedTaskForDay ? (
             <>
-              {isSavingTask ? (
-                <p className="hint" role="status" aria-live="polite">
-                  Guardando registro de tarea...
-                </p>
-              ) : null}
               {taskNotice ? (
                 <p className="hint" role="status" aria-live="polite">
                   {taskNotice}
@@ -985,34 +986,22 @@ export function AttendancePage() {
               <section className="detail-section">
                 <h5>Horas de la tarea</h5>
                 {workTaskSessions.length > 0 ? (
-                  <div className="table-scroll">
-                    <table>
-                      <thead>
-                        <tr>
-                          <th>Fecha</th>
-                          <th>Hora</th>
-                          <th>Acción</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {workTaskSessions.map((session) => (
-                          <tr key={session.id}>
-                            <td>{session.date}</td>
-                            <td>{slotTimeLabelById.get(session.scheduleSlotId) ?? session.scheduleSlotId}</td>
-                            <td>
-                              <button
-                                type="button"
-                                className={`btn secondary ${selectedTaskSessionForDay?.id === session.id ? "active" : ""}`}
-                                onClick={() => void selectWorkTaskSession(session)}
-                                aria-pressed={selectedTaskSessionForDay?.id === session.id}
-                              >
-                                {selectedTaskSessionForDay?.id === session.id ? "Seleccionada" : "Seleccionar"}
-                              </button>
-                            </td>
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                  <div className="task-hour-chips" role="group" aria-label="Horas de la tarea">
+                    {workTaskSessions.map((session) => {
+                      const isSelected = selectedTaskSessionForDay?.id === session.id;
+                      return (
+                        <button
+                          key={session.id}
+                          type="button"
+                          className={`task-hour-chip${isSelected ? " active" : ""}`}
+                          onClick={() => void selectWorkTaskSession(session)}
+                          aria-pressed={isSelected}
+                        >
+                          <span>{session.date}</span>
+                          <span>{slotTimeLabelById.get(session.scheduleSlotId) ?? session.scheduleSlotId}</span>
+                        </button>
+                      );
+                    })}
                   </div>
                 ) : (
                   <p className="hint">No hay horas registradas para esta tarea.</p>
@@ -1049,7 +1038,10 @@ export function AttendancePage() {
               ) : !selectedRubricTemplate && !selectedChecklistTemplate ? (
                 <section className="detail-section evaluation-empty-instrument">
                   <h5>Sin instrumento de evaluación</h5>
-                  <NavLink className="btn secondary" to={selectedWorkTodayLink}>Registrar comentario en Hoy</NavLink>
+                  <div className="evaluation-empty-actions">
+                    <NavLink className="btn secondary" to={selectedWorkTodayLink}>Registrar comentario en Hoy</NavLink>
+                    <NavLink className="btn" to={`/management/tasks?taskId=${encodeURIComponent(selectedTaskForDay.id)}`}>Ir a Tareas</NavLink>
+                  </div>
                 </section>
               ) : null}
 

@@ -5,6 +5,7 @@ import { setSelectedClass, setSelectedSubject } from "../../app/store";
 import { db } from "../db/database";
 import type { ClassGroup, Subject } from "../db/types";
 import { Modal } from "./Modal";
+import { setSubnavActionsTarget } from "./SubnavActions";
 import {
   findActiveNavigationArea,
   matchesNavigationPath,
@@ -266,6 +267,7 @@ export function TopTabs() {
               );
             })}
           </div>
+          <div className="workflow-subnav-actions" ref={setSubnavActionsTarget} />
         </nav>
       ) : null}
 

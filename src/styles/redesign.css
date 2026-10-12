@@ -683,18 +683,51 @@ td {
 }
 
 /* ---- Reports: the page title is implied by the section tab. ---- */
-.reports-period-filter > div:first-child h1 {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  margin: -1px;
-  overflow: hidden;
-  clip: rect(0, 0, 0, 0);
-  white-space: nowrap;
+.reports-page .reports-period-filter {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  justify-content: flex-start;
+  gap: 8px;
 }
 
-.reports-period-filter > div:first-child p {
+.reports-page .reports-period-filter > strong {
+  color: var(--rd-muted);
+  font-size: 0.75rem;
+}
+
+.reports-page .reports-period-filter .compact-field {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  min-height: 0;
+}
+
+.reports-page .reports-period-filter .compact-field > input {
+  flex: none;
+  height: auto;
+}
+
+@media (max-width: 840px) {
+  .reports-page .reports-period-filter {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    align-items: end;
+  }
+
+  .reports-page .reports-period-filter > :is(.context-sidebar-separator, strong, .btn, .hint) {
+    grid-column: 1 / -1;
+  }
+}
+
+.reports-page .reports-period-filter .hint {
   margin: 0;
+  padding: 6px 8px;
+  border-radius: 7px;
+  background: #fbeee0;
+  color: #8a4600;
+  font-size: 0.72rem;
 }
 
 .report-intent-tabs button,
@@ -913,4 +946,189 @@ td {
     min-height: 40px;
     padding: 6px 12px;
   }
+}
+
+/* ---- Section tab row: page status chips and quick actions ---- */
+.workflow-subnav-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+}
+
+.workflow-subnav-actions:empty {
+  display: none;
+}
+
+.subnav-chip,
+.subnav-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.subnav-status {
+  padding: 0;
+  color: var(--rd-muted);
+  font-weight: 600;
+}
+
+.subnav-chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+}
+
+.subnav-chip.success { background: #e4f7ec; color: #157a4a; }
+.subnav-chip.warning { background: #fbeee0; color: #8a4600; }
+.subnav-chip.neutral { background: #e9eef8; color: var(--rd-ink-2); }
+
+.subnav-link {
+  color: var(--rd-accent);
+  font-size: 0.78rem;
+  font-weight: 700;
+  text-decoration: underline;
+  white-space: nowrap;
+}
+
+.subnav-actions-inline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  align-items: center;
+}
+
+/* ---- Evaluar: task hours as chips, empty-instrument actions ---- */
+.task-hour-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.task-hour-chip {
+  display: inline-flex;
+  gap: 6px;
+  align-items: center;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--rd-line);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--rd-ink-2);
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.task-hour-chip span + span {
+  color: var(--rd-muted);
+}
+
+.task-hour-chip.active {
+  border-color: var(--rd-accent);
+  background: var(--rd-accent-tint);
+  color: var(--rd-accent-strong);
+}
+
+.task-hour-chip.active span + span {
+  color: var(--rd-accent-strong);
+}
+
+.evaluation-empty-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+@media (pointer: coarse), (max-width: 840px) {
+  .task-hour-chip { min-height: 40px; }
+}
+
+/* ---- Planner: compact week stepper in the sidebar ---- */
+.planner-week-stepper {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 4px;
+}
+
+.planner-week-range {
+  text-align: center;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--rd-ink);
+}
+
+.planner-week-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+@media (min-width: 841px) {
+  .workflow-subnav {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+}
+
+@media (max-width: 840px) {
+  .workflow-subnav-actions {
+    margin: 0;
+    padding: 6px 0;
+  }
+}
+
+/* ---- Comment bank: category filter pills ---- */
+.feedback-bank-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.feedback-bank-filter {
+  min-height: 26px;
+  padding: 0 10px;
+  border: 1px solid var(--rd-line);
+  border-radius: 999px;
+  background: #ffffff;
+  color: var(--rd-ink-2);
+  font: inherit;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.feedback-bank-filter.active {
+  border-color: var(--rd-accent);
+  background: var(--rd-accent);
+  color: #ffffff;
+}
+
+@media (pointer: coarse), (max-width: 840px) {
+  .feedback-bank-filter { min-height: 40px; }
+}
+
+/* Configuration pages built as a single management card share the section title scale. */
+.management-card > .detail-section > h1:first-child {
+  margin: 0;
+  color: var(--rd-ink);
+  font-size: 1.05rem;
+  font-weight: 800;
+}
+
+.reports-page .reports-period-filter .compact-field > span {
+  color: var(--rd-muted);
+  font-size: 0.72rem;
+  font-weight: 600;
 }
