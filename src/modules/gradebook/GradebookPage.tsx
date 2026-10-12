@@ -1,5 +1,4 @@
 import { type DragEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
-import { NavLink } from "react-router-dom";
 import { useAppSelector } from "../../app/hooks";
 import { db } from "../../shared/db/database";
 import type {
@@ -2052,9 +2051,6 @@ export function GradebookPage() {
               <h1>Cuaderno de notas</h1>
               <p>{selectedSubjectId ? gradebookRootName : "Selecciona curso y asignatura"}</p>
             </div>
-            <NavLink className="btn secondary" to="/management/periods">
-              Periodos y cierre
-            </NavLink>
           </header>
           <div className="gradebook-internal-tabs section-tabs" role="group" aria-label="Secciones del cuaderno">
             <button
@@ -2063,7 +2059,7 @@ export function GradebookPage() {
               className={`section-tab ${activeGradebookTab === "tree" ? "active" : ""}`}
               onClick={() => void changeGradebookTab("tree")}
             >
-              <span>Organización</span>
+              <span>Estructura</span>
             </button>
             <button
               type="button"
