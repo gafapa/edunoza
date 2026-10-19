@@ -1623,10 +1623,10 @@ describe("database payload validation", () => {
     const before = structuredClone(payload);
     const validated = validateDatabasePayload(payload);
     for (const name of ["taskStudentComments", "taskDailyEvaluationSettings", "taskRubricAssessments", "taskChecklistAssessments", "taskDirectGrades", "taskSubjectLinks"]) {
-      expect(validated[name]).toEqual(before.tables[name]);
+      expect(validated[name]).toEqual((before.tables as Record<string, unknown[]>)[name]);
       if (name !== "taskSubjectLinks") {
         const invalid = structuredClone(payload);
-        invalid.tables[name][0].taskId = "missing-task";
+        (invalid.tables as Record<string, Record<string, unknown>[]>)[name][0].taskId = "missing-task";
         expect(() => validateDatabasePayload(invalid)).toThrow(new RegExp(name));
       }
     }
