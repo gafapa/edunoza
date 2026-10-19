@@ -9,10 +9,12 @@ Settings has a single **Data and backups** entry (`/config/database`), with inte
 1. Install/update Proxy and allow `edunoza.com`. Enable GET, PROPFIND, MKCOL and PUT.
 2. Enter the HTTPS Nextcloud installation URL, account username and preferably an app password. No institution is preselected. The server URL is remembered on this device, but the login username and passwords are not. Actual account authentication remains subject to the institution's policies.
 3. Test the connection and list backups. This step does not create a directory or write remote data.
-4. Choose and confirm a separate encryption password of at least 12 characters. Create the backup explicitly.
+4. Choose and confirm a separate encryption password of at least 12 characters. Create the backup explicitly. After verification, Edunoza refreshes the remote listing and keeps the new backup selected. If listing fails, the verified backup remains available, the list is marked incomplete, and the user is asked to refresh the listing rather than repeat the upload.
 5. To restore on this device, list backups, enter the original encryption password and choose Restore from Nextcloud. Review the filename, timestamp and record counts, then explicitly acknowledge replacement. Edunoza first uploads and verifies an encrypted preventive snapshot using the entered encryption password, then replaces the local database in one transaction. No manual file transfer is required. To download files independently, use Nextcloud itself.
 
 Credentials, encryption passwords and the reviewed payload are React state only. They are discarded on leaving this screen. There is no automatic synchronization, remote deletion or credential persistence. Local data replacement requires explicit confirmation after review.
+
+Snapshots include every IndexedDB table, including `appPreferences`. Restoration replaces those preferences along with academic records. Browser settings and AI credentials stored outside the database are not included.
 
 ## Interface guidance
 
@@ -36,7 +38,7 @@ Announce progress and verification results and disable competing operations whil
 
 ## Limits and verification
 
-Edunoza limits encrypted files and responses to 10 MiB. Proxy defaults to 1 MiB requests and 10 MiB responses; users may need to increase the request limit to the required size. Its timeout can be raised to 120 seconds. No public-network CORS change is needed on Edunoza because Proxy performs the HTTP request.
+Edunoza limits encrypted files and responses to 10 MiB. Proxy defaults to 1 MiB requests and 10 MiB responses; users may need to increase the request limit to the required size. The creation panel distinguishes Edunoza's limit from Proxy's default request limit and warns that Nextcloud may impose an additional limit. Its timeout can be raised to 120 seconds. No public-network CORS change is needed on Edunoza because Proxy performs the HTTP request.
 
 The creation panel computes the compact encrypted envelope size before upload, including local gzip compression, UTF-8 encoding, the AES-GCM authentication tag, and base64 expansion. It disables remote upload when the current snapshot exceeds 10 MiB and links to local export, which preserves all attachments. The 20 MiB raw attachment quota is independent of the remote transfer limit. Upload still checks the final payload because another tab may change data after the estimate.
 

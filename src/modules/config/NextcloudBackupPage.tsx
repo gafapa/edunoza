@@ -76,10 +76,19 @@ export function NextcloudBackupPage() {
   const upload = () => run(async (signal) => {
     if (encryptionPassword !== confirmation) throw new Error("Las contraseñas de cifrado no coinciden.");
     const { buildCurrentPayload, validateDatabasePayload } = await import("../../shared/backup/database");
-    const backup = await client(signal).upload(await buildCurrentPayload(), encryptionPassword, validateDatabasePayload, setStatus);
+    const nextcloud = client(signal);
+    const backup = await nextcloud.upload(await buildCurrentPayload(), encryptionPassword, validateDatabasePayload, setStatus);
     setBackups((previous) => [backup, ...previous.filter((item) => item.name !== backup.name)]);
-    setSelected(backup.name); setListed(true); setEncryptionPassword(""); setConfirmation("");
+    setSelected(backup.name); setListed(false); setEncryptionPassword(""); setConfirmation("");
     setStatus(`Copia subida y verificada: ${backup.name}. Las copias anteriores se han conservado.`);
+    try {
+      const result = await nextcloud.list();
+      signal.throwIfAborted();
+      setBackups([backup, ...result.filter((item) => item.name !== backup.name)]);
+      setListed(true);
+    } catch {
+      if (!signal.aborted) setError("La copia está subida y verificada, pero no se pudo actualizar el listado completo. Pulsa «Comprobar conexión y listar copias» para ver las anteriores. No repitas la subida.");
+    }
   });
   const prepareRestore = () => run(async (signal) => {
     const backup = backups.find((item) => item.name === selected);
@@ -142,7 +151,8 @@ export function NextcloudBackupPage() {
     <fieldset disabled={busy} className="nextcloud-fields">
       <legend>Crear una copia</legend>
       <p>Se cifra en este dispositivo antes de enviarla a la carpeta Edunoza. Guarda la contraseña en un lugar seguro: no podemos recuperarla.</p>
-      <p role="status">{backupBytes === null ? sizeError || "Calculando el tamaño de la copia…" : `Tamaño cifrado: ${formatFileSize(backupBytes)}. Límite de Nextcloud y Proxy: ${formatFileSize(MAX_NEXTCLOUD_BACKUP_BYTES)}.`}</p>
+      <p role="status">{backupBytes === null ? sizeError || "Calculando el tamaño de la copia…" : `Tamaño cifrado: ${formatFileSize(backupBytes)}. Límite de Edunoza: ${formatFileSize(MAX_NEXTCLOUD_BACKUP_BYTES)}.`}</p>
+      <p className="hint">Proxy permite por defecto peticiones de hasta 1 MiB. Si tu copia supera ese tamaño, aumenta su límite de petición antes de subirla. Nextcloud puede aplicar un límite adicional.</p>
       <p className="hint">La copia se comprime en este dispositivo antes de cifrarse. Las copias anteriores siguen siendo legibles; los archivos ya comprimidos pueden reducirse poco.</p>
       {backupBytes !== null && backupBytes > MAX_NEXTCLOUD_BACKUP_BYTES && <p className="notice">Esta copia supera el límite de transferencia. <Link to="/config/database">Descarga una copia local</Link> para conservar todos los archivos.</p>}
       <label className="compact-field"><span>Contraseña para cifrar la nueva copia</span><input className="input" type="password" value={encryptionPassword} onChange={(event) => setEncryptionPassword(event.target.value)} autoComplete="new-password" minLength={12} aria-describedby="nextcloud-encryption-help" /></label>
@@ -153,6 +163,7 @@ export function NextcloudBackupPage() {
     <fieldset disabled={busy} className="nextcloud-fields">
       <legend>Restaurar datos</legend>
       <p>Elige una copia para sustituir los datos de este dispositivo. Antes de restaurar, se guardará y verificará una copia preventiva en Nextcloud. No se combinan datos entre dispositivos.</p>
+      {!listed && backups.length > 0 && <p className="notice">El listado puede estar incompleto. Comprueba la conexión para ver todas las copias de esta cuenta.</p>}
       {!backups.length ? <p>{listed ? "No hay copias disponibles. Puedes crear la primera arriba." : "Comprueba la conexión para ver las copias de esta cuenta."}</p> : <>
         <label className="compact-field"><span>Copia guardada</span><select className="input" value={selected} onChange={(event) => setSelected(event.target.value)}>{backups.map((backup) => <option key={backup.name} value={backup.name}>{backup.name}</option>)}</select></label>
         <label className="compact-field"><span>Contraseña que usaste para cifrar esta copia</span><input className="input" type="password" value={restorePassword} onChange={(event) => setRestorePassword(event.target.value)} autoComplete="off" /></label>
@@ -183,7 +194,7 @@ export function NextcloudBackupPage() {
       <summary>Ayuda con BoxAbalar y privacidad</summary>
       <p>En BoxAbalar utiliza https://boxabalar.edu.xunta.gal como servidor. La disponibilidad de contraseñas de aplicación y de WebDAV depende de tu cuenta y de las políticas del centro.</p>
       <p>La extensión recibe las credenciales de Nextcloud para realizar las peticiones y solo el archivo ya cifrado, nunca la contraseña de cifrado. Nextcloud conserva el archivo y sus metadatos. Instala únicamente una extensión de confianza y usa una cuenta autorizada para estos datos.</p>
-      <p>Las copias incluyen la base de datos (alumnado, planificación, seguimiento e informes guardados), no las preferencias ni las claves de IA del navegador. No se eliminan copias antiguas automáticamente: gestiona el espacio desde Nextcloud. Conserva también una copia local.</p>
+      <p>Las copias incluyen toda la base de datos: alumnado, planificación, seguimiento, informes guardados y preferencias almacenadas en la base de datos. Estas preferencias también se sustituyen al restaurar. No incluyen los ajustes ni las claves de IA guardados fuera de la base de datos en el navegador. No se eliminan copias antiguas automáticamente: gestiona el espacio desde Nextcloud. Conserva también una copia local.</p>
     </details>
   </article>;
 }

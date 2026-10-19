@@ -21,7 +21,7 @@ async function setup(page: Page, mode = "normal") {
       calls.push(request);
       let status = 200;
       let bodyText = "";
-      if (mode === "unauthorized") status = 401;
+      if (mode === "unauthorized" || (mode === "listing-failure" && request.method === "PROPFIND")) status = 401;
       else if (request.method === "PROPFIND") {
         status = 207;
         bodyText = `<d:multistatus xmlns:d="DAV:">${response(request.url, true)}${request.headers.Depth === "1" ? [...files.keys()].map((url) => response(url, false)).join("") : ""}</d:multistatus>`;
@@ -60,12 +60,45 @@ test("one settings entry groups local backups and Nextcloud with visible install
   await expect(page.getByRole("heading", { name: "Copia en Nextcloud", exact: true })).toBeVisible();
 });
 
+for (const listingFails of [false, true]) {
+  test(`upload refreshes earlier backups and preserves verification when listing fails (${listingFails})`, async ({ page }) => {
+    await setup(page);
+    const previousName = "edunoza-backup-2026-10-11T12-00-00.000Z-00000000-0000-0000-0000-000000000000.json";
+    await page.evaluate(({ previousName, listingFails }) => {
+      const fixture = (window as unknown as { nextcloudTest: { files: Map<string, string>; mode: string } }).nextcloudTest;
+      fixture.files.set(`https://boxabalar.edu.xunta.gal/remote.php/dav/files/synthetic-teacher/Edunoza/${previousName}`, "{}");
+      if (listingFails) fixture.mode = "listing-failure";
+    }, { previousName, listingFails });
+    await page.getByLabel("Contraseña para cifrar la nueva copia", { exact: true }).fill("synthetic-encryption-secret");
+    await page.getByLabel("Repite la contraseña de cifrado").fill("synthetic-encryption-secret");
+    await page.getByRole("button", { name: "Cifrar y subir copia" }).click();
+    await expect(page.getByText("Copia subida y verificada:", { exact: false })).toBeVisible();
+    const backups = page.getByRole("combobox", { name: /Copia guardada/ });
+    if (listingFails) {
+      await expect(page.getByRole("alert")).toContainText("No repitas la subida");
+      await expect(page.getByText("El listado puede estar incompleto.", { exact: false })).toBeVisible();
+      await expect(backups.locator("option")).toHaveCount(1);
+      await page.evaluate(() => { (window as unknown as { nextcloudTest: { mode: string } }).nextcloudTest.mode = "normal"; });
+      await page.getByRole("button", { name: "Comprobar conexión y listar copias" }).click();
+    }
+    await expect(backups.locator("option")).toHaveCount(2);
+    await expect(backups.locator("option", { hasText: previousName })).toHaveCount(1);
+    expect(await backups.inputValue()).not.toBe(previousName);
+    await expect(page.getByText("El listado puede estar incompleto.", { exact: false })).toHaveCount(0);
+    expect(await page.evaluate(() => {
+      const fixture = (window as unknown as { nextcloudTest: { calls: { method: string }[] } }).nextcloudTest;
+      return fixture.calls.filter(call => call.method === "PUT").length;
+    })).toBe(1);
+  });
+}
+
 test("direct restoration validates, confirms and preserves current records in a preventive backup", async ({ page }) => {
   await setup(page);
   await page.evaluate(async () => {
     const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
     await db.classGroups.put({ id: "nc-group", name: "Synthetic Group", level: "ESO", schoolYear: "2026-2027" });
     await db.students.put({ id: "nc-student", classId: "nc-group", firstName: "Synthetic", lastName: "Pupil", fullName: "Synthetic Pupil" });
+    await db.appPreferences.put({ id: "default", studentSortBy: "firstName", studentNameFormat: "firstLast", weekStartsOn: "sunday" });
   });
   await page.getByRole("button", { name: "Comprobar conexión y listar copias" }).click();
   await expect(page.getByText("Conexión comprobada. Todavía no hay copias", { exact: false })).toBeVisible();
@@ -85,6 +118,7 @@ test("direct restoration validates, confirms and preserves current records in a 
   await page.evaluate(async () => {
     const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
     await db.students.update("nc-student", { fullName: "Changed after backup", firstName: "Changed" });
+    await db.appPreferences.update("default", { weekStartsOn: "monday" });
     localStorage.setItem("edunoza-draft:before-restore", "stale draft");
   });
   await page.getByLabel("Contraseña que usaste para cifrar esta copia").fill("wrong-password");
@@ -118,10 +152,12 @@ test("direct restoration validates, confirms and preserves current records in a 
     const text = fixture.calls.filter((call) => call.method === "PUT").at(-1)!.body!;
     const payload = await decryptBackupPayload(JSON.parse(text), "synthetic-encryption-secret");
     validateDatabasePayload(payload);
-    return { saved: payload.tables.students, current: await db.students.get("nc-student"), draft: localStorage.getItem("edunoza-draft:before-restore") };
+    return { saved: payload.tables.students, current: await db.students.get("nc-student"), preferences: await db.appPreferences.get("default"), preventivePreferences: payload.tables.appPreferences, draft: localStorage.getItem("edunoza-draft:before-restore") };
   });
   expect(restored.saved).toEqual(expect.arrayContaining([expect.objectContaining({ fullName: "Changed after backup" })]));
   expect(restored.current.fullName).toBe("Synthetic Pupil");
+  expect(restored.preferences.weekStartsOn).toBe("sunday");
+  expect(restored.preventivePreferences).toEqual(expect.arrayContaining([expect.objectContaining({ weekStartsOn: "monday" })]));
   expect(restored.draft).toBeNull();
   await expect(page.getByRole("button", { name: "Verificar y descargar copia" })).toHaveCount(0);
 });
