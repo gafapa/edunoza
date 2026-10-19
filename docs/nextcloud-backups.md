@@ -25,6 +25,7 @@ Announce progress and verification results and disable competing operations whil
 ## Integrity and security
 
 - Reuses the local database snapshot builder, schema validator and AES-256-GCM/PBKDF2-SHA256 envelope (210,000 iterations).
+- Multiple tasks from the same subject may share a class, date and schedule slot, matching the planner. Validation preserves all of them; it still rejects repeated instances of the same task and different subjects occupying the same class period. Existing valid multi-task records require no data migration or deletion.
 - Upload filenames contain only timestamp and random UUID, never pupil names. The `Edunoza` directory is created during explicit upload only.
 - `PUT` uses `If-None-Match: *`. Existing snapshots are never intentionally replaced.
 - A successful PUT is not sufficient: GET must return identical ciphertext and authenticated decryption plus schema validation must succeed before the UI reports verification.

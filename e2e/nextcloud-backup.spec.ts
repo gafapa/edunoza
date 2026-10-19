@@ -99,6 +99,15 @@ test("direct restoration validates, confirms and preserves current records in a 
     await db.classGroups.put({ id: "nc-group", name: "Synthetic Group", level: "ESO", schoolYear: "2026-2027" });
     await db.students.put({ id: "nc-student", classId: "nc-group", firstName: "Synthetic", lastName: "Pupil", fullName: "Synthetic Pupil" });
     await db.appPreferences.put({ id: "default", studentSortBy: "firstName", studentNameFormat: "firstLast", weekStartsOn: "sunday" });
+    await db.scheduleDays.clear();
+    await db.scheduleDays.put({ id: "nc-day", dayOfWeek: 1, dayName: "Lunes", enabled: true, blocks: [{ id: "nc-slot", startTime: "09:00", endTime: "09:50" }] });
+    await db.subjects.put({ id: "nc-subject", name: "Synthetic subject", scheduleSlotIds: ["nc-slot"] });
+    await db.subjectCourseLinks.put({ id: "nc-link", classId: "nc-group", subjectId: "nc-subject" });
+    for (const id of ["nc-task-1", "nc-task-2"]) {
+      await db.tasks.put({ id, title: id, description: "", sessionCount: 1, sendToGradebook: false });
+      await db.taskSubjectLinks.put({ id: `${id}-link`, taskId: id, subjectId: "nc-subject" });
+      await db.taskSessions.put({ id: `${id}-session`, taskId: id, subjectId: "nc-subject", classId: "nc-group", date: "2026-10-19", scheduleSlotId: "nc-slot", status: "planned" });
+    }
   });
   await page.getByRole("button", { name: "Comprobar conexión y listar copias" }).click();
   await expect(page.getByText("Conexión comprobada. Todavía no hay copias", { exact: false })).toBeVisible();
@@ -152,10 +161,12 @@ test("direct restoration validates, confirms and preserves current records in a 
     const text = fixture.calls.filter((call) => call.method === "PUT").at(-1)!.body!;
     const payload = await decryptBackupPayload(JSON.parse(text), "synthetic-encryption-secret");
     validateDatabasePayload(payload);
-    return { saved: payload.tables.students, current: await db.students.get("nc-student"), preferences: await db.appPreferences.get("default"), preventivePreferences: payload.tables.appPreferences, draft: localStorage.getItem("edunoza-draft:before-restore") };
+    return { saved: payload.tables.students, current: await db.students.get("nc-student"), sessions: await db.taskSessions.toArray(), preventiveSessions: payload.tables.taskSessions, preferences: await db.appPreferences.get("default"), preventivePreferences: payload.tables.appPreferences, draft: localStorage.getItem("edunoza-draft:before-restore") };
   });
   expect(restored.saved).toEqual(expect.arrayContaining([expect.objectContaining({ fullName: "Changed after backup" })]));
   expect(restored.current.fullName).toBe("Synthetic Pupil");
+  expect(restored.sessions.map(session => session.taskId).sort()).toEqual(["nc-task-1", "nc-task-2"]);
+  expect(restored.preventiveSessions).toEqual(restored.sessions);
   expect(restored.preferences.weekStartsOn).toBe("sunday");
   expect(restored.preventivePreferences).toEqual(expect.arrayContaining([expect.objectContaining({ weekStartsOn: "monday" })]));
   expect(restored.draft).toBeNull();

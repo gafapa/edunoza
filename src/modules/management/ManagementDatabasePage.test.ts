@@ -1762,7 +1762,7 @@ describe("database payload validation", () => {
     expect(() => validateDatabasePayload(payload)).toThrow(/filas duplicadas.*taskId\+subjectId\+classId\+studentId/i);
   });
 
-  it("rejects task sessions that collide in the same class schedule slot", () => {
+  it("preserves different tasks from the same subject sharing a class schedule slot", () => {
     const payload = validPayload({
       tasks: [
         { id: "task-1", title: "Tarea 1", description: "", sessionCount: 1, sendToGradebook: true },
@@ -1794,7 +1794,18 @@ describe("database payload validation", () => {
       ]
     });
 
-    expect(() => validateDatabasePayload(payload)).toThrow(/filas duplicadas.*classId\+date\+scheduleSlotId/i);
+    expect(validateDatabasePayload(payload).taskSessions).toEqual(payload.tables.taskSessions);
+
+    const duplicate = structuredClone(payload);
+    duplicate.tables.taskSessions[1].taskId = "task-1";
+    expect(() => validateDatabasePayload(duplicate)).toThrow(/filas duplicadas.*taskId\+classId\+subjectId\+date\+scheduleSlotId/i);
+
+    const conflict = structuredClone(payload);
+    conflict.tables.subjects.push({ id: "subject-2", name: "English", scheduleSlotIds: ["slot-1"] });
+    conflict.tables.subjectCourseLinks.push({ id: "subject-course-2", subjectId: "subject-2", classId: "class-1" });
+    conflict.tables.taskSubjectLinks[1].subjectId = "subject-2";
+    conflict.tables.taskSessions[1].subjectId = "subject-2";
+    expect(() => validateDatabasePayload(conflict)).toThrow(/distintas asignaturas/);
   });
 
   it("rejects duplicate rubric rows for the same criterion in a task session", () => {

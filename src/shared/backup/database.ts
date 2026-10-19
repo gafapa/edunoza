@@ -1302,12 +1302,17 @@ export function validateDatabasePayload(parsed: unknown): Record<string, unknown
     (row) =>
       `${row.taskId as string}:${row.classId as string}:${row.subjectId as string}:${row.date as string}:${row.scheduleSlotId as string}`
   );
-  requireUniqueLogicalRows(
-    rows("taskSessions"),
-    "taskSessions",
-    "classId+date+scheduleSlotId",
-    (row) => `${row.classId as string}:${row.date as string}:${row.scheduleSlotId as string}`
-  );
+  // The planner supports multiple tasks from one subject in the same class period.
+  const subjectByClassPeriod = new Map<string, string>();
+  for (const row of rows("taskSessions")) {
+    const key = JSON.stringify([row.classId, row.date, row.scheduleSlotId]);
+    const subjectId = row.subjectId as string;
+    const existingSubjectId = subjectByClassPeriod.get(key);
+    if (existingSubjectId !== undefined && existingSubjectId !== subjectId) {
+      throw new Error("La tabla 'taskSessions' contiene sesiones de distintas asignaturas para el mismo grupo, fecha y franja.");
+    }
+    subjectByClassPeriod.set(key, subjectId);
+  }
   for (const row of rows("taskStudentComments")) {
     const taskId = requireString(row, "taskStudentComments", "taskId");
     const studentId = requireString(row, "taskStudentComments", "studentId");
