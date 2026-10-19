@@ -1331,9 +1331,7 @@ export function validateDatabasePayload(parsed: unknown): Record<string, unknown
     if (!subjectCourseKeys.has(`${subjectId}:${classId}`)) {
       throw new Error("La tabla 'taskStudentComments' usa una asignatura no asociada al curso.");
     }
-    if (!taskSubjectKeys.has(`${taskId}:${subjectId}`)) {
-      throw new Error("La tabla 'taskStudentComments' usa una tarea no vinculada a la asignatura.");
-    }
+    // Historical evidence retains its own task/subject scope even without an active planning link.
     const date = requireDateString(row, "taskStudentComments", "date");
     const scheduleSlotId = requireString(row, "taskStudentComments", "scheduleSlotId");
     requireText(row, "taskStudentComments", "comment");
@@ -1373,9 +1371,6 @@ export function validateDatabasePayload(parsed: unknown): Record<string, unknown
     }
     if (!subjectCourseKeys.has(`${subjectId}:${classId}`)) {
       throw new Error("La tabla 'taskDailyEvaluationSettings' usa una asignatura no asociada al curso.");
-    }
-    if (!taskSubjectKeys.has(`${taskId}:${subjectId}`)) {
-      throw new Error("La tabla 'taskDailyEvaluationSettings' usa una tarea no vinculada a la asignatura.");
     }
     const rubricTemplate = rubricTemplateId ? rubricTemplateById.get(rubricTemplateId) : null;
     const checklistTemplate = checklistTemplateId ? checklistTemplateById.get(checklistTemplateId) : null;
@@ -1420,9 +1415,6 @@ export function validateDatabasePayload(parsed: unknown): Record<string, unknown
     }
     if (!subjectCourseKeys.has(`${subjectId}:${classId}`)) {
       throw new Error("La tabla 'taskRubricAssessments' usa una asignatura no asociada al curso.");
-    }
-    if (!taskSubjectKeys.has(`${taskId}:${subjectId}`)) {
-      throw new Error("La tabla 'taskRubricAssessments' usa una tarea no vinculada a la asignatura.");
     }
     const template = rubricTemplateById.get(rubricTemplateId);
     if (template?.taskId && template.taskId !== taskId) {
@@ -1482,9 +1474,6 @@ export function validateDatabasePayload(parsed: unknown): Record<string, unknown
     if (!subjectCourseKeys.has(`${subjectId}:${classId}`)) {
       throw new Error("La tabla 'taskChecklistAssessments' usa una asignatura no asociada al curso.");
     }
-    if (!taskSubjectKeys.has(`${taskId}:${subjectId}`)) {
-      throw new Error("La tabla 'taskChecklistAssessments' usa una tarea no vinculada a la asignatura.");
-    }
     const template = checklistTemplateById.get(checklistTemplateId);
     if (template?.taskId && template.taskId !== taskId) {
       throw new Error("La tabla 'taskChecklistAssessments' usa una lista de otra tarea.");
@@ -1521,9 +1510,6 @@ export function validateDatabasePayload(parsed: unknown): Record<string, unknown
     requireReference(studentId, studentIds, "taskDirectGrades", "studentId");
     if (!subjectCourseKeys.has(`${subjectId}:${classId}`)) {
       throw new Error("La tabla 'taskDirectGrades' usa una asignatura no asociada al curso.");
-    }
-    if (!taskSubjectKeys.has(`${taskId}:${subjectId}`)) {
-      throw new Error("La tabla 'taskDirectGrades' usa una tarea no vinculada a la asignatura.");
     }
     if (studentClassById.get(studentId) !== classId) {
       throw new Error("La tabla 'taskDirectGrades' tiene una nota de un alumno que no pertenece al curso.");

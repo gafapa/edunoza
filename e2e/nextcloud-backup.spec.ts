@@ -103,6 +103,9 @@ test("direct restoration validates, confirms and preserves current records in a 
     await db.scheduleDays.put({ id: "nc-day", dayOfWeek: 1, dayName: "Lunes", enabled: true, blocks: [{ id: "nc-slot", startTime: "09:00", endTime: "09:50" }] });
     await db.subjects.put({ id: "nc-subject", name: "Synthetic subject", scheduleSlotIds: ["nc-slot"] });
     await db.subjectCourseLinks.put({ id: "nc-link", classId: "nc-group", subjectId: "nc-subject" });
+    await db.subjectStudentLinks.put({ id: "nc-student-link", subjectId: "nc-subject", studentId: "nc-student" });
+    await db.tasks.put({ id: "nc-historical-task", title: "Historical task", description: "", sessionCount: 1, sendToGradebook: false });
+    await db.taskStudentComments.put({ id: "nc-historical-comment", taskId: "nc-historical-task", classId: "nc-group", subjectId: "nc-subject", studentId: "nc-student", date: "2026-10-19", scheduleSlotId: "nc-slot", comment: "Synthetic historical observation" });
     for (const id of ["nc-task-1", "nc-task-2"]) {
       await db.tasks.put({ id, title: id, description: "", sessionCount: 1, sendToGradebook: false });
       await db.taskSubjectLinks.put({ id: `${id}-link`, taskId: id, subjectId: "nc-subject" });
@@ -161,12 +164,15 @@ test("direct restoration validates, confirms and preserves current records in a 
     const text = fixture.calls.filter((call) => call.method === "PUT").at(-1)!.body!;
     const payload = await decryptBackupPayload(JSON.parse(text), "synthetic-encryption-secret");
     validateDatabasePayload(payload);
-    return { saved: payload.tables.students, current: await db.students.get("nc-student"), sessions: await db.taskSessions.toArray(), preventiveSessions: payload.tables.taskSessions, preferences: await db.appPreferences.get("default"), preventivePreferences: payload.tables.appPreferences, draft: localStorage.getItem("edunoza-draft:before-restore") };
+    return { saved: payload.tables.students, current: await db.students.get("nc-student"), comments: await db.taskStudentComments.toArray(), preventiveComments: payload.tables.taskStudentComments, links: await db.taskSubjectLinks.toArray(), sessions: await db.taskSessions.toArray(), preventiveSessions: payload.tables.taskSessions, preferences: await db.appPreferences.get("default"), preventivePreferences: payload.tables.appPreferences, draft: localStorage.getItem("edunoza-draft:before-restore") };
   });
   expect(restored.saved).toEqual(expect.arrayContaining([expect.objectContaining({ fullName: "Changed after backup" })]));
   expect(restored.current.fullName).toBe("Synthetic Pupil");
   expect(restored.sessions.map(session => session.taskId).sort()).toEqual(["nc-task-1", "nc-task-2"]);
   expect(restored.preventiveSessions).toEqual(restored.sessions);
+  expect(restored.comments).toEqual([expect.objectContaining({ id: "nc-historical-comment", comment: "Synthetic historical observation" })]);
+  expect(restored.preventiveComments).toEqual(restored.comments);
+  expect(restored.links.some(link => link.taskId === "nc-historical-task")).toBe(false);
   expect(restored.preferences.weekStartsOn).toBe("sunday");
   expect(restored.preventivePreferences).toEqual(expect.arrayContaining([expect.objectContaining({ weekStartsOn: "monday" })]));
   expect(restored.draft).toBeNull();

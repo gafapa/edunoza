@@ -1561,9 +1561,11 @@ describe("database payload validation", () => {
     expect(() => validateDatabasePayload(payload)).toThrow(/classId/i);
   });
 
-  it("accepts evaluation data left behind after its planner session was reassigned, moved or removed", () => {
+  it.each([true, false])("preserves historical evaluation data with an active task-subject link: %s", (hasActiveLink) => {
     const payload = validPayload({
       taskSessions: [],
+      ...(!hasActiveLink ? { taskSubjectLinks: [] } : {}),
+      taskDirectGrades: [{ id: "direct-history", taskId: "task-1", subjectId: "subject-1", classId: "class-1", studentId: "student-1", score: 7 }],
       taskStudentComments: [
         {
           id: "comment-1",
@@ -1618,7 +1620,25 @@ describe("database payload validation", () => {
       ]
     });
 
-    expect(() => validateDatabasePayload(payload)).not.toThrow();
+    const before = structuredClone(payload);
+    const validated = validateDatabasePayload(payload);
+    for (const name of ["taskStudentComments", "taskDailyEvaluationSettings", "taskRubricAssessments", "taskChecklistAssessments", "taskDirectGrades", "taskSubjectLinks"]) {
+      expect(validated[name]).toEqual(before.tables[name]);
+      if (name !== "taskSubjectLinks") {
+        const invalid = structuredClone(payload);
+        invalid.tables[name][0].taskId = "missing-task";
+        expect(() => validateDatabasePayload(invalid)).toThrow(new RegExp(name));
+      }
+    }
+    expect(payload).toEqual(before);
+  });
+
+  it("still requires active task-subject links for planned sessions and gradebook configuration", () => {
+    expect(() => validateDatabasePayload(validPayload({ taskSubjectLinks: [] }))).toThrow(/taskSessions.*no vinculada/);
+    expect(() => validateDatabasePayload(validPayload({
+      taskSubjectLinks: [], taskSessions: [],
+      taskGradebookConfigs: [{ id: "config-1", classId: "class-1", subjectId: "subject-1", taskId: "task-1", gradebookWeight: 100, directGradeEnabled: true }]
+    }))).toThrow(/taskGradebookConfigs.*no vinculada/);
   });
 
   it("accepts manual grade observations without numeric grades", () => {
