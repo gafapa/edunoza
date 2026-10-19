@@ -7,11 +7,9 @@ function ConfigShell() {
   return (
     <section className="module-card">
       {notice ? <p className="notice" role="status" aria-live="polite">{notice}</p> : null}
-      {isBusy ? (
-        <div className="management-progress" role="status" aria-label="Procesando">
+        <div className="management-progress" role={isBusy ? "status" : undefined} aria-label={isBusy ? "Procesando" : undefined} aria-hidden={!isBusy} style={{ visibility: isBusy ? "visible" : "hidden" }}>
           <div className="management-progress-bar" />
         </div>
-      ) : null}
 
       <div className="courses-layout">
         <aside className="courses-list-panel">
