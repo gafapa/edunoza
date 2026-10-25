@@ -2,6 +2,7 @@ import { type ReactNode, useEffect, useRef, useState } from "react";
 import {
   APP_LOCK_CHANGED_EVENT,
   APP_LOCK_NOW_EVENT,
+  APP_LOCK_STORAGE_KEY,
   readAppLockConfig,
   verifyAppLockPassphrase,
   type AppLockConfig
@@ -36,23 +37,32 @@ export function AppLockGate({ children }: { children: ReactNode }) {
   const activityTimer = useRef<number | null>(null);
   const lastActivityAt = useRef(Date.now());
   const failedAttempts = useRef(0);
+  const lockRevision = useRef(0);
 
   useEffect(() => {
     const handleConfigChange = () => {
+      lockRevision.current += 1;
       const next = readLockState();
       setLockState(next);
-      if (!next.config && !next.error) setLocked(false);
+      setLocked(Boolean(next.config || next.error));
+      setPassphrase("");
     };
     const handleLockNow = () => {
+      lockRevision.current += 1;
       const next = readLockState();
       setLockState(next);
       if (next.config) setLocked(true);
     };
+    const handleStorageChange = (event: StorageEvent) => {
+      if (event.key === APP_LOCK_STORAGE_KEY || event.key === null) handleConfigChange();
+    };
     window.addEventListener(APP_LOCK_CHANGED_EVENT, handleConfigChange);
     window.addEventListener(APP_LOCK_NOW_EVENT, handleLockNow);
+    window.addEventListener("storage", handleStorageChange);
     return () => {
       window.removeEventListener(APP_LOCK_CHANGED_EVENT, handleConfigChange);
       window.removeEventListener(APP_LOCK_NOW_EVENT, handleLockNow);
+      window.removeEventListener("storage", handleStorageChange);
     };
   }, []);
 
@@ -96,14 +106,17 @@ export function AppLockGate({ children }: { children: ReactNode }) {
   }, [retryAfter]);
 
   const unlock = async (): Promise<void> => {
-    if (!config) return;
+    if (!config || isVerifying) return;
+    const revision = lockRevision.current;
     if (retryAfter > Date.now()) {
       setNotice("Demasiados intentos fallidos. Espera 30 segundos antes de volver a intentarlo.");
       return;
     }
     setIsVerifying(true);
     try {
-      if (!(await verifyAppLockPassphrase(config, passphrase))) {
+      const verified = await verifyAppLockPassphrase(config, passphrase);
+      if (revision !== lockRevision.current) return;
+      if (!verified) {
         failedAttempts.current += 1;
         if (failedAttempts.current >= MAX_FAILED_UNLOCK_ATTEMPTS) {
           const nextRetryAfter = Date.now() + UNLOCK_COOLDOWN_MS;

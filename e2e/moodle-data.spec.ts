@@ -88,7 +88,7 @@ test("Moodle stale previews, cancellation and missing remote records never overw
   expect(result).toMatchObject({ staleRejected: true, conflictDetected: true, titlePreserved: true, score: 7, gradeId: "moodle-local-grade", aborted: true, count: 3, studentPrivate: "PRIVATE student note", taskPrivate: "PRIVATE task instructions", students: 1, tasks: 1 });
 });
 
-test("Moodle grade review imports verified tasks and preserves tasks with unknown or advanced grading", async ({ page }) => {
+test("Moodle grade review requires individual numeric confirmation and rolls back an unconfirmed batch", async ({ page }) => {
   await page.goto("/config/preferences");
   await seedMoodleLocalRecords(page);
   const result = await page.evaluate(async () => {
@@ -115,13 +115,19 @@ test("Moodle grade review imports verified tasks and preserves tasks with unknow
       ...activities.map((activity, index) => ({ kind: "activity" as const, remoteId: activity.id, action: "link" as const, localId: `grade-task-${index}` }))
     ]));
     const preview = await service.previewGrades(connection.id, snapshot, scope);
-    await service.applyGrades(preview, Object.fromEntries(preview.rows.map(row => [row.id, "remote"])));
-    return { imported: preview.rows.map(row => row.activityId), skipped: preview.skipped.map(row => ({ activityId: row.activityId, reason: row.reason })), scores: await Promise.all(methods.map(async (_, index) => (await db.taskDirectGrades.get(`grade-${index}`))?.score)) };
+    let confirmationRejected = false;
+    try {
+      await service.applyGrades(preview, Object.fromEntries(preview.rows.map(row => [row.id, "remote"])));
+    } catch (error) {
+      confirmationRejected = (error as Error).message.includes("Confirma individualmente");
+    }
+    const rolledBackScores = await Promise.all(methods.map(async (_, index) => (await db.taskDirectGrades.get(`grade-${index}`))?.score));
+    const confirmed = await service.previewGrades(connection.id, snapshot, scope);
+    await service.applyGrades(confirmed, Object.fromEntries(confirmed.rows.map(row => [row.id, row.gradingMethod === "direct" ? "remote" : row.gradingMethod === "unknown" ? "numeric-result" : "local"])));
+    const reviewedScores = await Promise.all(methods.map(async (_, index) => (await db.taskDirectGrades.get(`grade-${index}`))?.score));
+    const advanced = await service.previewGrades(connection.id, snapshot, scope);
+    await service.applyGrades(advanced, Object.fromEntries(advanced.rows.map(row => [row.id, row.gradingMethod === "advanced" ? "numeric-result" : "local"])));
+    return { confirmationRejected, rolledBackScores, reviewedScores, methods: preview.rows.map(row => row.gradingMethod), skipped: preview.skipped, scores: await Promise.all(methods.map(async (_, index) => (await db.taskDirectGrades.get(`grade-${index}`))?.score)) };
   });
-  expect(result.imported).toEqual([71]);
-  expect(result.skipped).toEqual([
-    { activityId: 72, reason: expect.stringContaining("core_grading_get_definitions") },
-    { activityId: 73, reason: expect.stringContaining("calificación avanzada") }
-  ]);
-  expect(result.scores).toEqual([7, 6, 6]);
+  expect(result).toEqual({ confirmationRejected: true, rolledBackScores: [6, 6, 6], reviewedScores: [7, 7, 6], methods: ["direct", "unknown", "advanced"], skipped: [], scores: [7, 7, 7] });
 });

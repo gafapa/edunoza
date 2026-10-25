@@ -1,6 +1,7 @@
 import { expect, test } from "@playwright/test";
 
 test("closing an academic period locks its grades until it is reopened, versioning each closure", async ({ page }) => {
+  test.setTimeout(90_000);
   await page.goto("/management/students");
   await page.locator(".group-context-selector select").waitFor();
   await page.evaluate(async () => {
@@ -17,7 +18,7 @@ test("closing an academic period locks its grades until it is reopened, versioni
   await expect(page.locator(".group-context-selector select")).toBeEnabled();
   await page.locator(".group-context-selector select").selectOption("class-a");
 
-  const enterGrade = async (value: string) => {
+  const enterGrade = async (value: string, expectedStoredValue = Number(value)) => {
     await page.goto("/gradebook");
     await page.locator(".group-context-selector select").selectOption("class-a");
     await page.getByRole("button", { name: "Matemáticas", exact: true }).click();
@@ -25,7 +26,13 @@ test("closing an academic period locks its grades until it is reopened, versioni
     const gradeCell = page.getByLabel("Nota de Alba Ejemplo en Examen", { exact: true });
     await gradeCell.fill(value);
     await gradeCell.blur();
-    await page.waitForTimeout(200);
+    await expect(page.getByText(expectedStoredValue === Number(value)
+      ? "Nota guardada."
+      : "Reabre el periodo académico antes de modificar sus notas.", { exact: true })).toBeVisible();
+    await expect.poll(() => page.evaluate(async () => {
+      const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
+      return (await db.gradeEntries.where("assessmentId").equals("assessment-1").first())?.numericValue;
+    })).toBe(expectedStoredValue);
   };
 
   // Create the period and assign the assessment to it.
@@ -57,7 +64,7 @@ test("closing an academic period locks its grades until it is reopened, versioni
   await expect(page.getByText(/Cerrado · 1 instantáneas/, { exact: false })).toBeVisible();
 
   // Editing the grade should now be blocked, and the stored value must not change.
-  await enterGrade("9");
+  await enterGrade("9", 7);
   const lockedEntries = await page.evaluate(async () => {
     const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
     return db.gradeEntries.toArray();

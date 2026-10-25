@@ -16,7 +16,7 @@ for (const width of [320, 390, 768, 1440]) {
         await expect(navigation.getByRole("link", { name: "Aula", exact: true })).toHaveAttribute("aria-current", "page");
         await expect(navigation.getByRole("link", { name: "Grupos", exact: true })).toBeVisible();
       }
-      const geometry = await navigation.locator("a").evaluateAll(links => links.map(link => {
+      const geometry = await navigation.locator(".workflow-subnav-list a").evaluateAll(links => links.map(link => {
         const icon = link.querySelector("svg")!.getBoundingClientRect();
         const label = link.querySelector("span")!.getBoundingClientRect();
         const box = link.getBoundingClientRect();

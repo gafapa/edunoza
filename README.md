@@ -134,7 +134,7 @@ Backup payload schema 7 includes Moodle metadata, AI report history, and classro
 
 - Academic records remain local to the browser profile in IndexedDB; Edunoza has no application backend.
 - Downloaded backups and automatic pre-operation safety backups are encrypted. Edunoza never stores their passwords.
-- An optional local app lock uses a salted PBKDF2-SHA-256 verifier, validates its stored work factor, pauses retries after repeated failures, and automatically locks after the configured inactivity period. It protects the visible application from casual access but is not a substitute for operating-system disk and profile encryption.
+- An optional local app lock uses a salted PBKDF2-SHA-256 verifier, validates its stored work factor, pauses retries after repeated failures, and automatically locks after the configured inactivity period. Malformed stored settings block access, and configuration changes relock existing tabs. It protects the visible application from casual access but is not a substitute for operating-system disk and profile encryption.
 - CSV exports neutralize spreadsheet formula prefixes before escaping cell values.
 - Backup imports enforce a size limit and validate metadata, structure, types, relationships, scopes, uniqueness, dates, and numeric ranges before changing the database.
 - Resource imports additionally validate ownership, web protocols, MIME allowlists, exact base64 byte lengths, and per-file and total storage limits.

@@ -248,6 +248,10 @@ describe("Moodle read-only protocol adapter", () => {
       .getCourseSnapshot({ id: 5, fullName: "Mathematics", shortName: "MATH" });
     expect(snapshot.activities.find(activity => activity.id === 501)?.advancedGrading).toBeUndefined();
     expect(snapshot.warnings.length).toBeGreaterThan(0);
+    if (mode === "unavailable") {
+      expect(snapshot.warnings.join(" ")).toContain("importar solo su resultado numérico");
+      expect(snapshot.warnings.join(" ")).toContain("No se copiarán los criterios");
+    }
   });
 
   it("gates course reads using the token function allowlist", async () => {

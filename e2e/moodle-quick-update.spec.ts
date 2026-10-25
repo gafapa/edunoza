@@ -72,3 +72,43 @@ test("failed refresh cannot leave an old update actionable", async ({ page }) =>
   await expect(page.getByRole("alert")).toBeVisible();
   await expect(page.getByRole("button", { name: "Aplicar cambios y notas", exact: true })).toHaveCount(0);
 });
+
+test("numeric result import works without grading definitions and bulk choice cannot confirm it", async ({ page }, testInfo) => {
+  await prepareLinkedAccount(page);
+  await page.evaluate(() => {
+    const fixture = (window as unknown as { moodleFixture: { functions: string[] } }).moodleFixture;
+    fixture.functions = fixture.functions.filter(name => name !== "core_grading_get_definitions");
+  });
+  // Reconnect so capability discovery reflects the service without grading definitions.
+  await page.getByRole("button", { name: "Desconectar", exact: true }).click();
+  await connectMoodleToken(page, "syntheticToken123");
+  await page.getByRole("combobox", { name: "Curso Moodle", exact: true }).selectOption("4");
+  await page.getByRole("button", { name: "Continuar a revisión", exact: true }).click();
+  const numericChoice = page.getByRole("radio", { name: "Importar solo resultado numérico", exact: true });
+  await expect(numericChoice).toBeVisible();
+  await expect(page.getByText("Moodle: 70 / 100 → 7 / 10 · Edunoza: 6", { exact: true })).toBeVisible();
+  await page.getByRole("button", { name: "Usar todo Moodle", exact: true }).click();
+  await expect(numericChoice).not.toBeChecked();
+  await expect(page.locator(".moodle-grade-list").getByRole("radio", { name: "Conservar Edunoza", exact: true })).toBeChecked();
+  await page.getByRole("button", { name: "Aplicar cambios y notas", exact: true }).click();
+  const readScore = () => page.evaluate(async () => {
+    const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
+    return (await db.taskDirectGrades.get("moodle-local-grade"))?.score;
+  });
+  await expect(page.getByText("Cambios y notas aplicados según tus decisiones. Las demás evaluaciones siguen intactas.", { exact: true })).toBeVisible();
+  expect(await readScore()).toBe(6);
+  await page.getByRole("navigation", { name: "Pasos para importar datos de Moodle" }).getByRole("button", { name: /Elegir clase/ }).click();
+  await page.getByRole("button", { name: "Actualizar curso", exact: true }).click();
+  await page.getByRole("button", { name: "Continuar a revisión", exact: true }).click();
+  await expect(numericChoice).not.toBeChecked();
+  for (const width of [1440, 390]) {
+    await page.setViewportSize({ width, height: 1000 });
+    await numericChoice.scrollIntoViewIfNeeded();
+    await expect(numericChoice).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath(`numeric-review-${width}.png`) });
+  }
+  await numericChoice.check();
+  await page.getByRole("button", { name: "Aplicar cambios y notas", exact: true }).click();
+  await expect.poll(readScore).toBe(7);
+});

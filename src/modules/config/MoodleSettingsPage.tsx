@@ -20,6 +20,7 @@ import {
   previewUpdates,
   saveConnection,
   type MoodleGradePreview,
+  type MoodleGradeResolution,
   type MoodleMappingPreview,
   type MoodleUpdatePreview
 } from "../../shared/moodle/service";
@@ -156,7 +157,7 @@ export function MoodleSettingsPage() {
   const [updatePreview, setUpdatePreview] = useState<MoodleUpdatePreview | null>(null);
   const [updateResolutions, setUpdateResolutions] = useState<Record<string, MoodleResolution>>({});
   const [gradePreview, setGradePreview] = useState<MoodleGradePreview | null>(null);
-  const [gradeResolutions, setGradeResolutions] = useState<Record<string, MoodleResolution>>({});
+  const [gradeResolutions, setGradeResolutions] = useState<Record<string, MoodleGradeResolution>>({});
 
   const cancelPending = (announce = false): void => {
     requestVersionRef.current += 1;
@@ -707,7 +708,8 @@ export function MoodleSettingsPage() {
 
   const bulkSetResolutions = (resolution: MoodleResolution): void => {
     if (updatePreview) setUpdateResolutions(Object.fromEntries(updatePreview.rows.map((row) => [row.id, resolution])));
-    if (gradePreview) setGradeResolutions(Object.fromEntries(gradePreview.rows.map((row) => [row.id, resolution])));
+    if (gradePreview) setGradeResolutions((current) => Object.fromEntries(gradePreview.rows.map((row) => [row.id,
+      resolution === "remote" && row.gradingMethod !== "direct" ? current[row.id] === "numeric-result" ? "numeric-result" : "local" : resolution])));
   };
 
   return (
@@ -855,7 +857,18 @@ export function MoodleSettingsPage() {
                 </> : null}
               </div>
               {updatePreview ? updatePreview.rows.length ? <div className="moodle-resolution-list">{updatePreview.rows.map((row) => <fieldset key={row.id}><legend>{row.kind === "student" ? "Participante" : "Actividad"} · {fieldLabel(row.field)}{row.conflict ? " · Conflicto" : ""}</legend><label><input type="radio" name={`update-${row.id}`} checked={updateResolutions[row.id] === "local"} onChange={() => setUpdateResolutions((current) => ({ ...current, [row.id]: "local" }))} /><span><strong>Conservar Edunoza</strong><small>{String(row.localValue ?? "Vacío")}</small></span></label><label><input type="radio" name={`update-${row.id}`} checked={updateResolutions[row.id] === "remote"} onChange={() => setUpdateResolutions((current) => ({ ...current, [row.id]: "remote" }))} /><span><strong>Usar Moodle</strong><small>{String(row.sourceValue ?? "Vacío")}</small></span></label></fieldset>)}</div> : <p className="moodle-empty">No hay cambios pendientes en los campos compatibles.</p> : null}
-              {gradePreview ? gradePreview.rows.length ? <div className="moodle-grade-list">{gradePreview.rows.map((row) => <fieldset key={row.id}><legend>{tasks.find((item) => item.id === row.taskId)?.title ?? "Actividad"} · {students.find((item) => item.id === row.studentId)?.fullName ?? "Participante"}</legend><p>Moodle: {row.remoteGrade ?? "sin nota"} / {row.gradeMax} → {row.scaledGrade ?? "no compatible"} / 10 · Edunoza: {row.localGrade ?? "sin nota"}</p><label><input type="radio" name={`grade-${row.id}`} checked={gradeResolutions[row.id] === "local"} onChange={() => setGradeResolutions((current) => ({ ...current, [row.id]: "local" }))} /> Conservar Edunoza</label><label><input type="radio" name={`grade-${row.id}`} checked={gradeResolutions[row.id] === "remote"} onChange={() => setGradeResolutions((current) => ({ ...current, [row.id]: "remote" }))} /> Importar Moodle</label></fieldset>)}</div> : <p className="moodle-empty">No hay notas vinculadas y compatibles para importar.</p> : null}
+              {gradePreview?.rows.some((row) => row.gradingMethod !== "direct") ? <p>Las notas con rúbrica, guía o método sin comprobar se eligen individualmente. «Usar todo Moodle» no las selecciona.</p> : null}
+              {gradePreview ? gradePreview.rows.length ? <div className="moodle-grade-list">{gradePreview.rows.map((row) => {
+                const numericResultOnly = row.gradingMethod !== "direct";
+                const importResolution: MoodleGradeResolution = numericResultOnly ? "numeric-result" : "remote";
+                return <fieldset key={row.id}>
+                  <legend>{tasks.find((item) => item.id === row.taskId)?.title ?? "Actividad"} · {students.find((item) => item.id === row.studentId)?.fullName ?? "Participante"}</legend>
+                  <p>Moodle: {row.remoteGrade} / {row.gradeMax} → {row.scaledGrade} / 10 · Edunoza: {row.localGrade ?? "sin nota"}</p>
+                  {numericResultOnly ? <p>{row.gradingMethod === "advanced" ? "Esta tarea usa una rúbrica o guía en Moodle." : "No se ha podido comprobar el método de evaluación en Moodle."} Solo se copiará el resultado numérico de la tarea, sin criterios ni niveles de evaluación.</p> : null}
+                  <label><input type="radio" name={`grade-${row.id}`} checked={gradeResolutions[row.id] === "local"} onChange={() => setGradeResolutions((current) => ({ ...current, [row.id]: "local" }))} /> Conservar Edunoza</label>
+                  <label><input type="radio" name={`grade-${row.id}`} checked={gradeResolutions[row.id] === importResolution} onChange={() => setGradeResolutions((current) => ({ ...current, [row.id]: importResolution }))} /> {numericResultOnly ? "Importar solo resultado numérico" : "Importar Moodle"}</label>
+                </fieldset>;
+              })}</div> : <p className="moodle-empty">No hay notas vinculadas y compatibles para importar.</p> : null}
               {gradePreview?.skipped.length ? <details className="moodle-warnings" open><summary>{gradePreview.skipped.length} nota(s) de Moodle no importable(s)</summary><ul>{gradePreview.skipped.map((skip) => <li key={`${skip.activityId}:${skip.userId}`}><strong>{tasks.find((item) => item.id === skip.taskId)?.title ?? "Actividad"} · {students.find((item) => item.id === skip.studentId)?.fullName ?? "Participante"}:</strong> {skip.reason}</li>)}</ul></details> : null}
               {(updatePreview?.rows.length || gradePreview?.rows.length) ? <div className="moodle-actions"><button type="button" className="btn" disabled={Boolean(busy)} onClick={() => void applyChangesAndGrades()}>Aplicar cambios y notas</button></div> : null}
             </>

@@ -44,6 +44,18 @@ Authentication can generate/reuse a server-side token and log the login attempt;
 
 Non-secret connection metadata and associations are included in encrypted Edunoza backups. Older backups remain importable without Moodle metadata. Restoring a backup does not restore an authenticated Moodle session.
 
+## Troubleshooting unavailable grading methods
+
+The default login service, `moodle_mobile_app`, does not include `core_grading_get_definitions` in Moodle 4.5's standard service registration. A teacher role alone cannot add a function to the token's service. Edunoza checks the functions reported by `core_webservice_get_site_info`; when this function is absent, assignment grading methods remain unverified.
+
+Grading definitions are optional for importing an assignment's numeric result. When `mod_assign_get_grades` provides a numeric task grade and assignment metadata provides a positive maximum, Edunoza shows the original score, its explicit 0–10 conversion and the existing local score. Known advanced grading and unverified methods require choosing **Importar solo resultado numérico** individually for each grade. This copies only the task result, without rubric criteria or guide levels; it does not claim to reproduce a gradebook total, overrides or weighting. **Usar todo Moodle** never selects these rows on the teacher's behalf, and all rows initially retain the local value. A refresh resets the choices. Group submissions, nonnumeric scales, incompatible local evaluation settings, closed periods, stale previews and conflicting local changes remain protected.
+
+To enable method verification as well, an administrator can check **Site administration > Server > Web services > External services**, select an editable custom service, and add `core_grading_get_definitions` alongside the read functions required by the connector. Authorize the teacher for that service where restricted to authorized users, and issue a token for that same service. For username/password login, enter the custom service's shortname in Edunoza's advanced connection options; changing the shortname does not change an already saved token. Reconnect with the appropriate token and refresh the course before reviewing grades again.
+
+If the function is present but one task remains unverified, check the account's access to that activity and any context restriction on the token. Moodle can also return module-specific warnings for draft or hidden advanced grading definitions. `moodle/grade:managegradingforms` controls access to those restricted definitions; it is not a universal prerequisite for reading every grading area. Do not grant it solely because the function is missing from the service. Missing areas and unscoped warnings also remain unverified, so the generic task notice alone does not prove a permission failure.
+
+Sources: [Moodle 4.5 service registration](https://github.com/moodle/moodle/blob/MOODLE_405_STABLE/lib/db/services.php) and [grading API access checks](https://github.com/moodle/moodle/blob/MOODLE_405_STABLE/lib/classes/grading_external.php). These checks describe upstream behavior; the school's installed version and authenticated configuration have not been inspected.
+
 ## Function families
 
 The adapter uses an explicit read-only allowlist. Site identity and accessible courses come from `core_webservice_get_site_info` and `core_enrol_get_users_courses`. Course information comes from enrolled-user, group and course-content functions. Assignment metadata, grades and submissions use `mod_assign_get_*` functions where permitted. Optional grading-definition metadata may be used to distinguish representations. No `save`, `update`, `create`, `delete`, or upload operation is exposed by the adapter.

@@ -9,6 +9,7 @@ import {
   writeOnboardingState
 } from "../../shared/onboarding/state";
 import { Modal } from "../../shared/ui/Modal";
+import { getBrowserStorage } from "../../shared/storage/browserStorage";
 
 type GuideView = "welcome" | "step";
 
@@ -17,15 +18,11 @@ type TeacherOnboardingProps = {
   isReady: boolean;
 };
 
-function getBrowserStorage(): Storage | undefined {
-  return typeof window === "undefined" ? undefined : window.localStorage;
-}
-
 export function TeacherOnboarding({ items, isReady }: TeacherOnboardingProps) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
   const [persistedState, setPersistedState] = useState<OnboardingState | null>(() =>
-    readOnboardingState(getBrowserStorage())
+    readOnboardingState(getBrowserStorage("local"))
   );
   const [guideView, setGuideView] = useState<GuideView>("welcome");
   const [isGuideOpen, setIsGuideOpen] = useState(false);
@@ -39,7 +36,7 @@ export function TeacherOnboarding({ items, isReady }: TeacherOnboardingProps) {
   );
   const persist = (state: OnboardingState): void => {
     setPersistedState(state);
-    writeOnboardingState(state, getBrowserStorage());
+    writeOnboardingState(state, getBrowserStorage("local"));
   };
 
   useEffect(() => {

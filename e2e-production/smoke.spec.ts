@@ -70,6 +70,10 @@ test("accepting a worker update reloads the built application and retains local 
     await page.evaluate(async () => { await navigator.serviceWorker.ready; });
     await expect.poll(() => page.evaluate(() => navigator.serviceWorker.controller?.state)).toBe("activated");
     await page.evaluate(() => localStorage.setItem("review-update-marker", "kept"));
+    await page.evaluate(async () => {
+      const cache = await caches.open("edunoza-unrelated-installation");
+      await cache.put("/other-installation/index.html", new Response("Other offline workspace"));
+    });
     expect(initialDialogs, "First installation must not offer an update").toEqual([]);
     page.off("dialog", dismissInitialDialog);
     page.on("console", message => {
@@ -97,6 +101,10 @@ test("accepting a worker update reloads the built application and retains local 
     ]);
     await expect(page.locator(".app-shell")).toBeVisible();
     expect(await page.evaluate(() => localStorage.getItem("review-update-marker"))).toBe("kept");
+    expect(await page.evaluate(async () => {
+      const cache = await caches.open("edunoza-unrelated-installation");
+      return (await cache.match("/other-installation/index.html"))?.text();
+    })).toBe("Other offline workspace");
   } finally {
     await updateServer.close();
   }

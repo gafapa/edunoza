@@ -1,5 +1,32 @@
 import { expect, test } from "@playwright/test";
 
+test("corrupt lock configuration blocks access without deleting the configuration", async ({ page }) => {
+  await page.addInitScript(() => localStorage.setItem("profeplus_app_lock", "{broken"));
+  await page.goto("/today");
+  await expect(page.getByRole("alert")).toContainText("está dañada");
+  await expect(page.locator(".app-shell")).toHaveCount(0);
+  expect(await page.evaluate(() => localStorage.getItem("profeplus_app_lock"))).toBe("{broken");
+});
+
+test("lock changes in another tab relock an open workspace", async ({ page, context }) => {
+  await page.goto("/today");
+  await expect(page.locator(".app-shell")).toBeVisible();
+  const settings = await context.newPage();
+  await settings.goto("/today");
+  await settings.evaluate(async () => {
+    const { createAppLockConfig } = await import(/* @vite-ignore */ "/src/shared/security/appLock.ts");
+    localStorage.setItem("profeplus_app_lock", JSON.stringify(await createAppLockConfig("Synthetic-lock-2026", 15)));
+  });
+  await expect(page.getByRole("heading", { name: "Edunoza está bloqueado" })).toBeVisible();
+  await expect(page.locator(".app-shell")).toHaveCount(0);
+  await page.getByLabel("Clave del dispositivo").fill("Synthetic-lock-2026");
+  await page.getByRole("button", { name: "Desbloquear", exact: true }).click();
+  await expect(page.locator(".app-shell")).toBeVisible();
+  await settings.evaluate(() => localStorage.setItem("profeplus_app_lock", "null"));
+  await expect(page.getByRole("alert")).toContainText("está dañada");
+  await expect(page.locator(".app-shell")).toHaveCount(0);
+});
+
 test("preference storage failures retain a working application and visible notice", async ({ page }) => {
   await page.addInitScript(() => {
     const get = Storage.prototype.getItem;

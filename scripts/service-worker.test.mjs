@@ -6,9 +6,10 @@ import assert from "node:assert/strict";
 const source = readFileSync(new URL("../public/sw.js", import.meta.url), "utf8")
   .replace("/* __EDUNOZA_PRECACHE_ASSETS__ */ []", '["index.html", "assets/app.js"]');
 
-function worker({ offline = false, shell = new Response("installed shell"), asset } = {}) {
+function worker({ offline = false, shell = new Response("installed shell"), asset, cacheNames = [] } = {}) {
   const listeners = {};
   const writes = [];
+  const deleted = [];
   const cache = {
     match: async (request, options) => {
       const url = String(request.url ?? request);
@@ -24,9 +25,15 @@ function worker({ offline = false, shell = new Response("installed shell"), asse
     self: {
       registration: { scope: "https://school.example/app/" },
       location: { origin: "https://school.example" },
-      addEventListener: (name, listener) => { listeners[name] = listener; }
+      addEventListener: (name, listener) => { listeners[name] = listener; },
+      clients: { claim: async () => {} }
     },
-    caches: { open: async () => cache },
+    encodeURIComponent,
+    caches: {
+      open: async () => cache,
+      keys: async () => cacheNames,
+      delete: async (name) => { deleted.push(name); return true; }
+    },
     fetch: async () => {
       if (offline) throw new Error("offline");
       return new Response("network response");
@@ -34,6 +41,12 @@ function worker({ offline = false, shell = new Response("installed shell"), asse
   });
   return {
     writes,
+    deleted,
+    activate: () => {
+      let completion;
+      listeners.activate({ waitUntil: (value) => { completion = value; } });
+      return completion;
+    },
     fetch: (path, { navigation = false, ...options } = {}) => {
       let response;
       const request = new Request(new URL(path, "https://school.example"), options);
@@ -43,6 +56,14 @@ function worker({ offline = false, shell = new Response("installed shell"), asse
     }
   };
 }
+
+test("activation removes only obsolete caches owned by the current installation", async () => {
+  const prefix = `edunoza-scope-${encodeURIComponent("https://school.example/app/")}-`;
+  const old = `${prefix}old`;
+  const app = worker({ cacheNames: [old, `${prefix}__EDUNOZA_CACHE_NAME__`, "edunoza-legacy", "profeplus-legacy", `edunoza-scope-${encodeURIComponent("https://school.example/other/")}-old`, "another-app"] });
+  await app.activate();
+  assert.deepEqual(app.deleted, [old]);
+});
 
 test("worker does not cache API, authenticated, query, cross-origin or out-of-scope requests", () => {
   const app = worker();

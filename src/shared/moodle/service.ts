@@ -67,6 +67,8 @@ export type MoodleUpdatePreview = {
   state: MoodlePreviewState;
 };
 
+export type MoodleGradeResolution = MoodleResolution | "numeric-result";
+
 export type MoodleGradePreviewRow = {
   id: string;
   activityId: number;
@@ -77,6 +79,7 @@ export type MoodleGradePreviewRow = {
   gradeMax: number;
   scaledGrade: number;
   localGrade: number | null;
+  gradingMethod: "direct" | "advanced" | "unknown";
 };
 
 export type MoodleGradeSkip = {
@@ -696,17 +699,13 @@ export async function previewGrades(connectionId: string, snapshot: MoodleCourse
     const activityBinding = activityBindings.get(grade.activityId);
     const studentBinding = studentBindings.get(grade.userId);
     if (!activity || activity.module !== "assign" || !activityBinding || !studentBinding) continue;
-    const reason = activity.advancedGrading === undefined
-      ? "Moodle no permite comprobar el método de calificación de esta tarea. Revisa los permisos de core_grading_get_definitions en el servicio web."
-      : activity.advancedGrading
-      ? "Esta actividad usa calificación avanzada (rúbrica o guía) en Moodle; Edunoza no puede importar esas notas."
-      : activity.teamSubmission
-        ? "Esta actividad es una entrega en grupo en Moodle; Edunoza no importa notas de entregas en grupo."
-        : !activity.gradeMax || activity.gradeMax <= 0
-          ? "La actividad de Moodle no tiene una puntuación máxima configurada."
-          : !await compatibleConfig(activityBinding.localId, scope)
-            ? "La tarea local no usa evaluación directa (usa rúbrica, lista de verificación, o pertenece a un periodo cerrado o sin configurar); actívala con evaluación directa para importar notas de Moodle."
-            : undefined;
+    const reason = activity.teamSubmission
+      ? "Esta actividad es una entrega en grupo en Moodle; Edunoza no importa notas de entregas en grupo."
+      : !activity.gradeMax || activity.gradeMax <= 0
+        ? "La actividad de Moodle no tiene una puntuación máxima configurada."
+        : !await compatibleConfig(activityBinding.localId, scope)
+          ? "La tarea local no usa evaluación directa (usa rúbrica, lista de verificación, o pertenece a un periodo cerrado o sin configurar); actívala con evaluación directa para importar notas de Moodle."
+          : undefined;
     if (reason) {
       skipped.push({ activityId: activity.id, userId: grade.userId, taskId: activityBinding.localId, studentId: studentBinding.localId, reason });
       continue;
@@ -721,13 +720,14 @@ export async function previewGrades(connectionId: string, snapshot: MoodleCourse
       .equals([activityBinding.localId, scope.subjectId, scope.classId]).filter((candidate) => candidate.studentId === studentBinding.localId).first();
     rows.push({ id: `${activityBinding.id}:${studentBinding.id}:${grade.modifiedAt}`, activityId: activity.id, userId: grade.userId,
       taskId: activityBinding.localId, studentId: studentBinding.localId, remoteGrade: grade.grade, gradeMax,
-      scaledGrade: scaleMoodleGrade(grade.grade, gradeMax), localGrade: direct?.score ?? null });
+      scaledGrade: scaleMoodleGrade(grade.grade, gradeMax), localGrade: direct?.score ?? null,
+      gradingMethod: activity.advancedGrading === undefined ? "unknown" : activity.advancedGrading ? "advanced" : "direct" });
   }
   return issuePreview("grades", { token: newId(), connectionId, scope: { ...scope }, snapshotFetchedAt: snapshot.fetchedAt,
     rows, skipped, state: await captureState(connection, scope) });
 }
 
-export async function applyGrades(preview: MoodleGradePreview, resolutions: Record<string, MoodleResolution>, signal?: AbortSignal): Promise<void> {
+export async function applyGrades(preview: MoodleGradePreview, resolutions: Record<string, MoodleGradeResolution>, signal?: AbortSignal): Promise<void> {
   consumePreview("grades", preview);
   signal?.throwIfAborted();
   const transactionTables = [db.moodleConnections, db.moodleBindings, db.moodleOperations, db.classGroups, db.subjects,
@@ -741,7 +741,10 @@ export async function applyGrades(preview: MoodleGradePreview, resolutions: Reco
       let applied = 0;
       for (const row of preview.rows) {
         const resolution = resolutions[row.id];
-        if (resolution !== "remote" && resolution !== "local") throw new Error("Selecciona una resolución para cada calificación.");
+        if (resolution !== "remote" && resolution !== "local" && resolution !== "numeric-result") throw new Error("Selecciona una resolución para cada calificación.");
+        if (resolution === "remote" && row.gradingMethod !== "direct") {
+          throw new Error("Confirma individualmente que quieres importar solo el resultado numérico de esta nota.");
+        }
         if (!Number.isFinite(row.scaledGrade) || row.scaledGrade < 0 || row.scaledGrade > 10) {
           throw new Error("La calificación remota queda fuera del rango local de 0 a 10.");
         }
@@ -761,7 +764,7 @@ export async function applyGrades(preview: MoodleGradePreview, resolutions: Reco
             !student || student.classId !== preview.scope.classId || !subjectLink) {
           throw new Error("Las asociaciones de la calificación ya no son compatibles con el ámbito local.");
         }
-        if (resolution === "remote") {
+        if (resolution === "remote" || resolution === "numeric-result") {
           const direct: TaskDirectGrade = { id: existing?.id ?? newId(), taskId: row.taskId, subjectId: preview.scope.subjectId,
             classId: preview.scope.classId, studentId: row.studentId, score: row.scaledGrade };
           await db.taskDirectGrades.put(direct);

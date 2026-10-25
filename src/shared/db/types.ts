@@ -392,6 +392,7 @@ export type FamilyContact = {
   nextStep?: string;
   dueDate?: string;
   responsiblePerson?: string;
+  status?: FollowUpStatus;
   createdAt: string;
   updatedAt: string;
 };

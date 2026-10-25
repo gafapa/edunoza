@@ -1,7 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import type { ClassGroup, Student } from "../db/types";
-import { db } from "../db/database";
 import { prepareGroupedStudentsImport } from "./groupedStudentsImport";
+import { importGroupedStudents } from "./groupedStudentsPersistence";
 import { parseGroupedStudentsCsv, type GroupedStudentsCsvResult } from "./studentsCsv";
 import { downloadStudentImportTemplate } from "./studentImportTemplate";
 
@@ -114,15 +114,11 @@ export function GroupedStudentsImporter({
     setIsImporting(true);
     setError("");
     try {
-      const plan = prepareGroupedStudentsImport({
+      const plan = await importGroupedStudents({
         selectedGroups,
         schoolYear: schoolYear.trim(),
         existingCourses: courses,
         existingStudents: students
-      });
-      await db.transaction("rw", db.classGroups, db.students, async () => {
-        if (plan.coursesToAdd.length > 0) await db.classGroups.bulkAdd(plan.coursesToAdd);
-        if (plan.studentsToAdd.length > 0) await db.students.bulkAdd(plan.studentsToAdd);
       });
 
       try {

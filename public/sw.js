@@ -1,4 +1,5 @@
-const CACHE_NAME = "__EDUNOZA_CACHE_NAME__";
+const CACHE_PREFIX = `edunoza-scope-${encodeURIComponent(self.registration.scope)}-`;
+const CACHE_NAME = `${CACHE_PREFIX}__EDUNOZA_CACHE_NAME__`;
 const PRECACHE_ASSETS = /* __EDUNOZA_PRECACHE_ASSETS__ */ [];
 const ROOT_URL = new URL("./", self.registration.scope);
 const ASSET_URLS = new Set(PRECACHE_ASSETS.map((path) => new URL(path, ROOT_URL).href));
@@ -28,7 +29,7 @@ self.addEventListener("activate", (event) => {
           keys
             .filter(
               (key) =>
-                (key.startsWith("edunoza-") || key.startsWith("profeplus-")) &&
+                key.startsWith(CACHE_PREFIX) &&
                 key !== CACHE_NAME
             )
             .map((key) => caches.delete(key))

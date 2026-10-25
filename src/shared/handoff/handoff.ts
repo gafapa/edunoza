@@ -184,6 +184,7 @@ function validateFamilyContact(value: unknown): value is FamilyContact {
     hasString(value, "contactName") &&
     hasString(value, "relationship") &&
     hasString(value, "summary") &&
+    (value.status === undefined || hasAllowedValue(value, "status", ["open", "inProgress", "done"])) &&
     hasOptionalString(value, "agreements") &&
     hasOptionalString(value, "nextStep") &&
     hasOptionalIsoDate(value, "dueDate") &&

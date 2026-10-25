@@ -1600,6 +1600,9 @@ export function validateDatabasePayload(parsed: unknown): Record<string, unknown
     optionalString(row, "familyContacts", "agreements");
     optionalString(row, "familyContacts", "nextStep");
     optionalString(row, "familyContacts", "responsiblePerson");
+    if (row.status !== undefined && !["open", "inProgress", "done"].includes(row.status as string)) {
+      throw new Error("La tabla 'familyContacts' contiene 'status' no válido.");
+    }
     if (optionalString(row, "familyContacts", "dueDate")) {
       requireDateString(row, "familyContacts", "dueDate");
     }

@@ -26,8 +26,9 @@ function hasEncodedByteLength(value: string, expectedLength: number): boolean {
   }
 }
 
-function isValidAppLockConfig(value: Partial<AppLockConfig>): value is AppLockConfig {
+function isValidAppLockConfig(value: Partial<AppLockConfig> | null): value is AppLockConfig {
   return (
+    value !== null &&
     value.version === 1 &&
     typeof value.salt === "string" &&
     hasEncodedByteLength(value.salt, APP_LOCK_SALT_BYTES) &&
@@ -118,13 +119,14 @@ export function readAppLockConfig(storage?: Storage): AppLockConfig | null {
   } catch {
     throw new Error("No se puede comprobar el bloqueo local. Permite el almacenamiento de este sitio y vuelve a intentarlo.");
   }
-  if (!rawValue) return null;
+  if (rawValue === null) return null;
   try {
     const value = JSON.parse(rawValue) as Partial<AppLockConfig>;
-    return isValidAppLockConfig(value) ? value : null;
+    if (isValidAppLockConfig(value)) return value;
   } catch {
-    return null;
+    // Preserve the stored value so corruption never silently disables the lock.
   }
+  throw new Error("La configuración del bloqueo local está dañada o no es compatible. No se ha permitido el acceso a los datos.");
 }
 
 export function persistAppLockConfig(config: AppLockConfig | null): void {

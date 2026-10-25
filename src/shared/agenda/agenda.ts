@@ -128,7 +128,7 @@ export function buildAgendaItems(source: AgendaSource): AgendaItem[] {
   }
 
   for (const contact of source.familyContacts) {
-    if (!contact.dueDate || !contact.nextStep?.trim() || contact.dueDate > horizonEnd) continue;
+    if (contact.status === "done" || !contact.dueDate || !contact.nextStep?.trim() || contact.dueDate > horizonEnd) continue;
     if (contact.date !== latestContactDateByStudent.get(contact.studentId)) continue;
     const studentName = studentNameById.get(contact.studentId) ?? "Alumno sin identificar";
     items.push({

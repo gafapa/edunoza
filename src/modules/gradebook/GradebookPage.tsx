@@ -41,6 +41,7 @@ import { ContextSidebarTabs } from "../../shared/ui/ContextSidebarTabs";
 import { SubnavActions } from "../../shared/ui/SubnavActions";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
 import { parsePastedGradeGrid } from "../../shared/gradebook/bulkGrades";
+import { saveManualAssessmentChange, saveManualGradeChanges, type ManualGradeChange } from "../../shared/gradebook/manualGradePersistence";
 import { toLocalIsoDate } from "../../shared/utils/date";
 
 import {
@@ -1155,10 +1156,12 @@ export function GradebookPage() {
       return;
     }
 
-    await db.assessments.put({
-      ...assessment,
-      ...normalized
-    });
+    try {
+      await saveManualAssessmentChange(assessment, { ...assessment, ...normalized });
+    } catch (error) {
+      setGradebookNotice(error instanceof Error ? error.message : "No se pudo guardar la prueba.");
+      return;
+    }
     setGradebookNotice("Prueba guardada.");
     await loadData();
   };
@@ -1174,9 +1177,25 @@ export function GradebookPage() {
       setGradebookNotice("No se puede eliminar una prueba que ya tiene notas.");
       return;
     }
-    await db.assessments.delete(assessmentId);
+    if (!assessment) return;
+    try {
+      await saveManualAssessmentChange(assessment);
+    } catch (error) {
+      setGradebookNotice(error instanceof Error ? error.message : "No se pudo eliminar la prueba.");
+      return;
+    }
     setGradebookNotice("Prueba eliminada.");
     await loadData();
+  };
+
+  const persistManualGrades = async (changes: ManualGradeChange[]): Promise<boolean> => {
+    try {
+      await saveManualGradeChanges(changes);
+      return true;
+    } catch (error) {
+      setGradebookNotice(error instanceof Error ? error.message : "No se pudieron guardar las notas. Actualiza el cuaderno y vuelve a revisarlas.");
+      return false;
+    }
   };
 
   const saveManualGradeCell = async (
@@ -1215,24 +1234,23 @@ export function GradebookPage() {
 
     if (parsed === null && comment.length === 0 && status === "pending") {
       if (existingEntry) {
-        await db.gradeEntries.delete(existingEntry.id);
+        if (!await persistManualGrades([{ assessment, studentId, expectedEntry: existingEntry }])) return;
       }
       setGradebookNotice("Nota y observación eliminadas.");
       await loadData();
       return;
     }
 
-    await db.gradeEntries.put(
-      buildManualGradeEntry({
-        existingEntry,
-        classId: selectedClassId,
-        assessment,
-        studentId,
-        numericValue: parsed ?? undefined,
-        comment,
-        status
-      })
-    );
+    const entry = buildManualGradeEntry({
+      existingEntry,
+      classId: selectedClassId,
+      assessment,
+      studentId,
+      numericValue: parsed ?? undefined,
+      comment,
+      status
+    });
+    if (!await persistManualGrades([{ assessment, studentId, expectedEntry: existingEntry, entry }])) return;
     setGradebookNotice("Nota guardada.");
     await loadData();
   };
@@ -1269,7 +1287,8 @@ export function GradebookPage() {
         status: bulkGradeStatus
       })
     );
-    await db.gradeEntries.bulkPut(updates);
+    if (!await persistManualGrades(updates.map(entry => ({ assessment, studentId: entry.studentId,
+      expectedEntry: entriesByKey.get(gradeCellKey(entry.studentId, assessment.id)), entry })))) return;
     setGradebookNotice(
       `Cambio aplicado a ${updates.length} alumno${updates.length === 1 ? "" : "s"} en ${assessment.title}.`
     );
@@ -1322,7 +1341,8 @@ export function GradebookPage() {
       setGradebookNotice("La matriz pegada no contiene notas.");
       return;
     }
-    await db.gradeEntries.bulkPut(updates);
+    if (!await persistManualGrades(updates.map(entry => ({ assessment: filteredAssessments.find(item => item.id === entry.assessmentId)!,
+      studentId: entry.studentId, expectedEntry: entriesByKey.get(gradeCellKey(entry.studentId, entry.assessmentId)), entry })))) return;
     setPastedGradeDraft("");
     setGradebookNotice(`${updates.length} notas pegadas correctamente.`);
     await loadData();
@@ -2103,6 +2123,12 @@ export function GradebookPage() {
             </button>
           </div>
 
+          {gradebookNotice ? (
+            <p className="hint" role="status" aria-live="polite">
+              {gradebookNotice}
+            </p>
+          ) : null}
+
           {activeGradebookTab === "tree" ? (
           <section className="detail-section flush">
             <div className="course-detail-header">
@@ -2123,11 +2149,6 @@ export function GradebookPage() {
           {isSavingGradebookWeights ? (
             <p className="hint" role="status" aria-live="polite">
               Guardando cambios del arbol...
-            </p>
-          ) : null}
-          {gradebookNotice ? (
-            <p className="hint" role="status" aria-live="polite">
-              {gradebookNotice}
             </p>
           ) : null}
             <div className="gradebook-tree">

@@ -84,6 +84,19 @@ function sourceTables(): HandoffTables {
 }
 
 describe("student handoff packages", () => {
+  it.each([undefined, "open", "inProgress", "done"] as const)("preserves family contact status %s", (status) => {
+    const source = sourceTables();
+    source.familyContacts[0].status = status;
+    const payload = createStudentHandoffPayload(source, ["student-a"], exportedAt);
+    expect(parseStudentHandoffPayload(payload).tables.familyContacts[0].status).toBe(status);
+  });
+
+  it("rejects an invalid family contact status", () => {
+    const payload = createStudentHandoffPayload(sourceTables(), ["student-a"], exportedAt);
+    Object.assign(payload.tables.familyContacts[0], { status: "invalid" });
+    expect(() => parseStudentHandoffPayload(payload)).toThrow();
+  });
+
   it("exports only selected students and their required references", () => {
     const payload = createStudentHandoffPayload(sourceTables(), ["student-a"], exportedAt);
 

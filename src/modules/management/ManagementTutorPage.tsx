@@ -343,6 +343,7 @@ export function ManagementTutorPage() {
         nextStep: contactDraft.nextStep.trim() || undefined,
         dueDate: contactDraft.dueDate || undefined,
         responsiblePerson: contactDraft.responsiblePerson.trim() || undefined,
+        status: "open",
         createdAt: now,
         updatedAt: now
       });
@@ -351,6 +352,30 @@ export function ManagementTutorPage() {
       await loadTutorData();
       setNotice("Contacto familiar registrado.");
     } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const contactStatusBusy = useRef(false);
+  const setContactStatus = async (contact: FamilyContact, status: FollowUpStatus): Promise<void> => {
+    if (contactStatusBusy.current) return;
+    contactStatusBusy.current = true;
+    setIsSaving(true);
+    try {
+      await db.transaction("rw", db.familyContacts, async () => {
+        const current = await db.familyContacts.get(contact.id);
+        if (!current) throw new Error("El contacto ya no existe. Actualiza la página.");
+        if ((current.status ?? "open") !== (contact.status ?? "open")) {
+          throw new Error("El estado cambió en otra pestaña. Actualiza la página antes de volver a intentarlo.");
+        }
+        await db.familyContacts.update(contact.id, { status, updatedAt: new Date().toISOString() });
+      });
+      await loadTutorData();
+      setNotice(`Contacto familiar marcado como ${statusLabel(status).toLowerCase()}.`);
+    } catch (error) {
+      setNotice(error instanceof Error ? error.message : "No se pudo cambiar el estado del contacto. Vuelve a intentarlo.");
+    } finally {
+      contactStatusBusy.current = false;
       setIsSaving(false);
     }
   };
@@ -709,13 +734,17 @@ export function ManagementTutorPage() {
           <div className="tutor-card-list">
             {[...contacts].sort((left, right) => right.date.localeCompare(left.date)).map((contact) => {
               const student = studentById.get(contact.studentId);
-              const contactOverdue = Boolean(contact.dueDate && contact.dueDate < today);
+              const contactStatus = contact.status ?? "open";
+              const contactOverdue = contactStatus !== "done" && Boolean(contact.dueDate && contact.dueDate < today);
               return (
                 <article key={contact.id} className="tutor-contact-card">
                   <div><span className="eyebrow">{contact.date} · {contactChannelLabel(contact.channel)}</span><h3>{student ? formatName(student) : "Alumno no disponible"}</h3><p>{contact.summary}</p></div>
                   <dl className="tutor-case-meta"><div><dt>Contacto</dt><dd>{contact.contactName} · {contact.relationship}</dd></div>{contact.agreements ? <div><dt>Acuerdos</dt><dd>{contact.agreements}</dd></div> : null}{contact.nextStep ? <div><dt>Próximo paso</dt><dd className={contactOverdue ? "overdue" : ""}>{contact.nextStep}{contact.dueDate ? ` · ${contact.dueDate}` : ""}</dd></div> : null}</dl>
                   <div className="tutor-card-actions">
-                    <button type="button" className="btn secondary management-danger-btn" onClick={() => void deleteContact(contact)}>Eliminar</button>
+                    <span>Estado: {statusLabel(contactStatus)}</span>
+                    {contactStatus === "open" ? <button type="button" className="btn secondary" disabled={isSaving} onClick={() => void setContactStatus(contact, "inProgress")}>Empezar</button> : null}
+                    {contactStatus !== "done" ? <button type="button" className="btn secondary" disabled={isSaving} onClick={() => void setContactStatus(contact, "done")}>Completar</button> : <button type="button" className="btn secondary" disabled={isSaving} onClick={() => void setContactStatus(contact, "open")}>Reabrir</button>}
+                    <button type="button" className="btn secondary management-danger-btn" disabled={isSaving} onClick={() => void deleteContact(contact)}>Eliminar</button>
                   </div>
                 </article>
               );

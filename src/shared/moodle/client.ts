@@ -583,7 +583,7 @@ export function createMoodleClient(
     if (!site.functions.includes(FUNCTIONS.gradingDefinitions)) {
       return {
         byCmid,
-        warnings: ["Moodle no permite comprobar si las tareas usan calificación avanzada; no se podrán incorporar sus calificaciones con garantías."]
+        warnings: ["Moodle no permite comprobar el método de evaluación de las tareas. Puedes revisar cada nota e importar solo su resultado numérico. No se copiarán los criterios de rúbricas o guías."]
       };
     }
     const envelope = asRecord(await call(FUNCTIONS.gradingDefinitions, {
@@ -607,7 +607,7 @@ export function createMoodleClient(
       if (!hasUnscopedWarning && !warnedModules.has(cmid)) byCmid.set(cmid, activeMethod !== "");
     }
     if (modules.some((module) => !byCmid.has(module.id))) {
-      warnings.push("No se ha podido comprobar la calificación de algunas tareas; sus notas no se importarán. Las tareas comprobadas siguen disponibles.");
+      warnings.push("No se ha podido comprobar el método de evaluación de algunas tareas. Puedes importar sus resultados numéricos tras revisarlos y elegirlos individualmente.");
     }
     return { byCmid, warnings };
   };
