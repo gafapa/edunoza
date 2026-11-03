@@ -93,8 +93,8 @@ npm run build      # Type-check and build production assets into dist/
 npm run build:test # Build the local/CI verification profile with analytics disabled
 npm run build:production # Build the production deployment profile
 npm run preview    # Preview the production build
-npm run clean      # Remove generated builds, coverage, logs, and TypeScript caches
-npm run test       # Run Vitest
+npm run clean      # Remove generated builds, QA output, logs, and TypeScript caches
+npm run test       # Run Vitest and Node script regressions
 npm run test:coverage # Run Vitest and write the full source coverage report
 npm run lint       # Run ESLint, including React hook checks
 npm run typecheck  # Run TypeScript project checks
@@ -260,7 +260,7 @@ The expected result is:
 - Production build succeeds.
 - The dependency audit passes with no known vulnerabilities and no advisory exceptions.
 
-The latest production browser QA covered:
+The built-application browser suite covers:
 
 - Production loading from the domain root and route-level lazy loading.
 - Accessible navigation landmarks, skip link, page headings, configuration navigation, and modal labeling.
@@ -299,6 +299,8 @@ The deployed content security policy must keep the supported cloud API origins a
 loopback endpoints in `connect-src` when AI features are enabled.
 
 ## Development Conventions
+
+See the [maintained documentation index](docs/README.md) for integration contracts, data integrity, and repository cleanup rules. Historical implementation plans and dated review reports have been consolidated into those maintained documents; previous tracked versions remain available in Git history.
 
 - Documentation, variable names, function names, and code comments are written in English.
 - User-facing UI text can remain Spanish.

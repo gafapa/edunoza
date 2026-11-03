@@ -3,7 +3,10 @@ import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const projectRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const generatedDirectories = new Set(["coverage", "dist", ".vite"]);
+const generatedDirectories = new Set([
+  "coverage", "dist", ".vite", "test-results", "playwright-report",
+  "artifacts", ".playwright-mcp", ".impeccable"
+]);
 const generatedFilePatterns = [
   /\.log$/i,
   /\.tsbuildinfo$/i,
@@ -23,7 +26,7 @@ function isSafeRootEntry(targetPath) {
 const entries = await readdir(projectRoot, { withFileTypes: true });
 const targets = entries
   .filter((entry) =>
-    entry.isDirectory()
+    entry.isSymbolicLink() ? false : entry.isDirectory()
       ? generatedDirectories.has(entry.name)
       : generatedFilePatterns.some((pattern) => pattern.test(entry.name))
   )

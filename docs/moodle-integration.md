@@ -68,14 +68,7 @@ For subsequent updates, reselecting the same course from **Elegir clase** (or it
 
 Refreshing, changing scope or applying associations invalidates older previews. Applying basic-information changes also invalidates the grade preview for the same scope, so Edunoza automatically re-issues it before applying any selected grade. A failed refresh leaves no old snapshot actionable.
 
-See [the guided workflow plan](moodle-guided-workflow-plan.md) for the design history of the original guided flow this redesign replaced.
 
 ## Verification scope
 
 Automated tests use synthetic Moodle protocol responses and isolated browser databases. They cover association preservation, stale plans, disconnect/reconnect, account separation, read-only transport and backup validation. A public-page HTTP check is not an authenticated integration test. A live test must use the authorized Moodle token in the app and confirm the capabilities reported by that server.
-
-See [the implementation plan](moodle-integration-plan.md) for ownership and acceptance criteria.
-
-## Deployment verification — 2026-09-13
-
-Published the dedicated Proxy tab, optional username/password token acquisition, device token persistence and institution-neutral connection preferences. Thirty focused unit tests and twenty browser tests passed, including cancellation, token deletion, non-persistence of login credentials and recovery of previously saved Moodle connections. TypeScript, scoped lint and production build passed. Production verification confirmed 68 byte-identical build files, security headers and 14 routes without uncaught JavaScript errors, including initially empty Moodle/Nextcloud server fields in a fresh browser. No live school login was attempted.

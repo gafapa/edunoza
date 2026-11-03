@@ -83,6 +83,55 @@ test("invalid evaluation and gradebook drafts block context changes", async ({ p
   await expect(weight).toHaveValue("-1");
 });
 
+test("task evaluation keeps an unsaved draft when another tab closes its academic period", async ({ page }) => {
+  await page.evaluate(async () => {
+    const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
+    const { createAcademicPeriod } = await import(/* @vite-ignore */ "/src/shared/academic/periods.ts");
+    const period = await createAcademicPeriod("b", { name: "Synthetic term", startDate: "2026-09-01", endDate: "2026-12-20" });
+    await db.taskGradebookConfigs.update("config", { academicPeriodId: period.id });
+    await db.taskDirectGrades.put({ id: "grade", taskId: "task", subjectId: "math", classId: "b", studentId: "student", score: 6 });
+  });
+  await navigate(page, "/journal/work?classId=b&subjectId=math&taskId=task&date=2026-09-04&slotId=slot");
+  const grade = page.getByPlaceholder("0-10");
+  await expect(grade).toHaveValue("6");
+  await page.evaluate(async () => {
+    const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
+    const { closeAcademicPeriod } = await import(/* @vite-ignore */ "/src/shared/academic/periods.ts");
+    await closeAcademicPeriod((await db.taskGradebookConfigs.get("config"))!.academicPeriodId!);
+  });
+  await grade.fill("9");
+  await grade.blur();
+  await expect(page.getByText(/Reabre el periodo académico y comprueba su grupo/)).toBeVisible();
+  await expect(grade).toHaveValue("9");
+  expect(await page.evaluate(async () => {
+    const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
+    return { score: (await db.taskDirectGrades.get("grade"))?.score, snapshotScore: (await db.gradebookPeriodSnapshots.toArray())[0]?.data.taskDirectGrades[0]?.score };
+  })).toEqual({ score: 6, snapshotScore: 6 });
+});
+
+test("stale task weight autosave preserves the academic period assigned by another tab", async ({ page }) => {
+  await navigate(page, "/gradebook");
+  await page.getByRole("button", { name: "Matemáticas", exact: true }).click();
+  const weight = page.getByLabel("Peso", { exact: true }).first();
+  await expect(weight).toHaveValue("100");
+  const periodId = await page.evaluate(async () => {
+    const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
+    const { createAcademicPeriod } = await import(/* @vite-ignore */ "/src/shared/academic/periods.ts");
+    const period = await createAcademicPeriod("b", { name: "Synthetic term", startDate: "2026-09-01", endDate: "2026-12-20" });
+    await db.taskGradebookConfigs.update("config", { academicPeriodId: period.id });
+    return period.id;
+  });
+  await weight.fill("50");
+  await weight.blur();
+  await expect(page.getByText(/La configuración de evaluación ha cambiado/)).toBeVisible();
+  await expect(weight).toHaveValue("50");
+  expect(await page.evaluate(async () => {
+    const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
+    const config = await db.taskGradebookConfigs.get("config");
+    return { periodId: config?.academicPeriodId, weight: config?.gradebookWeight };
+  })).toEqual({ periodId, weight: 100 });
+});
+
 test("AI preview excludes free-text identifiers and cancellation sends nothing", async ({ page }) => {
   let requests = 0;
   let sentBody = "";

@@ -24,6 +24,7 @@ import type {
   UnitBlock
 } from "../../shared/db/types";
 import { matchesTaskScope } from "../../shared/gradebook/calculations";
+import { saveTaskEvaluationChanges } from "../../shared/gradebook/taskEvaluationPersistence";
 import { useStudentDisplay } from "../../shared/hooks/useStudentDisplay";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
 import { ClassGroupSelect } from "../../shared/ui/ClassGroupSelect";
@@ -588,13 +589,6 @@ export function AttendancePage() {
     const effectiveChecklistTemplateId = effectiveRubricTemplateId
       ? ""
       : (selectedTaskGradebookConfig?.checklistTemplateId ?? "");
-    if (selectedTaskGradebookConfig?.academicPeriodId) {
-      const academicPeriod = await db.academicPeriods.get(selectedTaskGradebookConfig.academicPeriodId);
-      if (academicPeriod?.status === "closed") {
-        setTaskNotice("Reabre el periodo académico para modificar esta evaluación.");
-        return false;
-      }
-    }
     const usesDirectGrade = Boolean(selectedTaskGradebookConfig?.directGradeEnabled);
     const normalizedDirectGrades: TaskDirectGrade[] = [];
     if (usesDirectGrade) {
@@ -633,13 +627,9 @@ export function AttendancePage() {
 
     setIsSavingTask(true);
     try {
-      await db.transaction(
-        "rw",
-        db.taskStudentComments,
-        db.taskDailyEvaluationSettings,
-        db.taskRubricAssessments,
-        db.taskChecklistAssessments,
-        db.taskDirectGrades,
+      await saveTaskEvaluationChanges(
+        { taskId, subjectId: selectedSubjectId, classId: selectedClassId },
+        selectedTaskGradebookConfig ?? undefined,
         async () => {
           const commentIds = (await db.taskStudentComments
             .where("[taskId+classId+subjectId+date+scheduleSlotId]")
@@ -753,6 +743,9 @@ export function AttendancePage() {
         await loadMetadata();
       }
       return true;
+    } catch (error) {
+      setTaskNotice(error instanceof Error ? error.message : "No se pudo guardar la evaluación. Conserva los cambios y vuelve a intentarlo.");
+      return false;
     } finally {
       setIsSavingTask(false);
     }

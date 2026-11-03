@@ -10,12 +10,12 @@ AI features use the built-in browser runtime in `src/shared/ai/runtime.ts`. It c
 
 ## Stack
 
-- React 19 + TypeScript 5.9
-- Vite 7 + vite-plugin-pwa 1.3
+- React 19 + TypeScript 6
+- Vite 8 with a native service worker
 - Redux Toolkit 2
 - Dexie 4 with IndexedDB
 - React Router DOM 7
-- Vitest 4
+- Vitest 5
 
 ## Commands
 
@@ -60,10 +60,12 @@ src/
 - Backup imports must validate app name, schema version, export timestamp, allowed table names, row IDs, references, date/time values, duplicate logical rows, schedule overlaps, and supported legacy tables before clearing data.
 - Do not add automatic seed data on normal app startup.
 
-## Deployment
+## Documentation and maintenance
 
-- Root deployment: `VITE_BASE_PATH=/`
-- Subdirectory deployment: `VITE_BASE_PATH=/edunoza/`
+- Start with `README.md` for current scope, commands, source layout, and deployment at `https://edunoza.com/`.
+- Use `docs/README.md` to find maintained integration, recovery, and security contracts.
+- Run `npm run clean` to remove reproducible local output. Keep Git metadata, workspace configuration, dependencies, and academic compatibility code.
+- Keep legacy database names, backup identifiers, additive migrations, and regression fixtures. Their age does not make them obsolete.
 
 ## Conventions
 

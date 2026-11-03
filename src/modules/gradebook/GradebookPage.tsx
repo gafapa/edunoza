@@ -1,6 +1,7 @@
 import { type DragEvent, type KeyboardEvent, useEffect, useMemo, useRef, useState } from "react";
 import { useAppSelector } from "../../app/hooks";
 import { db } from "../../shared/db/database";
+import { requireEditableTaskGradebookConfig } from "../../shared/gradebook/taskEvaluationPersistence";
 import type {
   Assessment,
   ChecklistTemplate,
@@ -965,12 +966,25 @@ export function GradebookPage() {
       ...task,
       groupId: groupId || undefined
     };
-    if (isMeaningfulTaskGradebookConfig(nextConfig)) {
-      await db.taskGradebookConfigs.put(nextConfig);
-    } else if (persistedTaskConfigKeys.has(taskKey)) {
-      await db.taskGradebookConfigs.delete(task.id);
+    try {
+      await db.transaction("rw", [db.taskGradebookConfigs, db.academicPeriods, db.gradebookGroups], async () => {
+        await requireEditableTaskGradebookConfig(task, persistedTaskConfigKeys.has(taskKey) ? task : undefined);
+        if (groupId) {
+          const group = await db.gradebookGroups.get(groupId);
+          if (!group || group.classId !== task.classId || group.subjectId !== task.subjectId) {
+            throw new Error("La carpeta ya no es compatible con esta tarea. Actualiza el cuaderno.");
+          }
+        }
+        if (isMeaningfulTaskGradebookConfig(nextConfig)) {
+          await db.taskGradebookConfigs.put(nextConfig);
+        } else if (persistedTaskConfigKeys.has(taskKey)) {
+          await db.taskGradebookConfigs.delete(task.id);
+        }
+      });
+      await loadData();
+    } catch (error) {
+      setGradebookNotice(error instanceof Error ? error.message : "No se pudo guardar la carpeta de la tarea.");
     }
-    await loadData();
   };
 
   const updateGroupParent = async (groupId: string, parentGroupId: string): Promise<void> => {
@@ -1060,7 +1074,19 @@ export function GradebookPage() {
 
     setIsSavingGradebookWeights(true);
     try {
-      await db.transaction("rw", db.taskGradebookConfigs, db.gradebookGroups, async () => {
+      await db.transaction("rw", [db.taskGradebookConfigs, db.gradebookGroups, db.academicPeriods], async () => {
+        for (const taskKey of pendingTaskWeightKeys) {
+          const task = includedTaskConfigById.get(taskKey);
+          if (task) await requireEditableTaskGradebookConfig(task, persistedTaskConfigKeys.has(taskKey) ? task : undefined);
+        }
+        for (const group of groupUpdates) {
+          const current = await db.gradebookGroups.get(group.id);
+          const expected = gradebookGroupById.get(group.id);
+          const encode = (value: GradebookGroup | undefined) => value && JSON.stringify(value, Object.keys(value).sort());
+          if (!current || encode(current) !== encode(expected)) {
+            throw new Error("La carpeta ha cambiado. Actualiza el cuaderno antes de guardar sus ponderaciones.");
+          }
+        }
         if (taskConfigIdsToDelete.length > 0) {
           await db.taskGradebookConfigs.bulkDelete(taskConfigIdsToDelete);
         }
@@ -1077,6 +1103,9 @@ export function GradebookPage() {
       setGradebookNotice(notice);
       await loadData();
       return true;
+    } catch (error) {
+      setGradebookNotice(error instanceof Error ? error.message : "No se pudieron guardar las ponderaciones. Conserva los cambios y vuelve a intentarlo.");
+      return false;
     } finally {
       setIsSavingGradebookWeights(false);
     }
@@ -1100,26 +1129,32 @@ export function GradebookPage() {
 
     const nextIndex = filteredAssessments.length + 1;
     const assessmentDate = toLocalIsoDate();
-    const matchingPeriod = (
-      await db.academicPeriods
-        .where("[classId+status]")
-        .equals([selectedClassId, "open"])
-        .toArray()
-    ).find(
-      (period) => assessmentDate >= period.startDate && assessmentDate <= period.endDate
-    );
-    await db.assessments.add({
-      id: crypto.randomUUID(),
-      classId: selectedClassId,
-      subjectId: selectedSubjectId,
-      academicPeriodId: matchingPeriod?.id,
-      assessmentDate,
-      title: `Prueba ${nextIndex}`,
-      weight: 0,
-      period: matchingPeriod?.name ?? ""
-    });
-    setGradebookNotice("Prueba creada.");
-    await loadData();
+    try {
+      await db.transaction("rw", [db.academicPeriods, db.assessments], async () => {
+        const matchingPeriod = (
+          await db.academicPeriods
+            .where("[classId+status]")
+            .equals([selectedClassId, "open"])
+            .toArray()
+        ).find(
+          (period) => assessmentDate >= period.startDate && assessmentDate <= period.endDate
+        );
+        await db.assessments.add({
+          id: crypto.randomUUID(),
+          classId: selectedClassId,
+          subjectId: selectedSubjectId,
+          academicPeriodId: matchingPeriod?.id,
+          assessmentDate,
+          title: `Prueba ${nextIndex}`,
+          weight: 0,
+          period: matchingPeriod?.name ?? ""
+        });
+      });
+      setGradebookNotice("Prueba creada.");
+      await loadData();
+    } catch (error) {
+      setGradebookNotice(error instanceof Error ? error.message : "No se pudo crear la prueba. Vuelve a intentarlo.");
+    }
   };
 
   const updateAssessmentDraft = (assessmentId: string, patch: Partial<ManualAssessmentDraft>): ManualAssessmentDraft => {

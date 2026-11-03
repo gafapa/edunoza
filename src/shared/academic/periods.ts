@@ -287,44 +287,57 @@ export async function createAcademicPeriod(
   classId: string,
   draft: AcademicPeriodDraft
 ): Promise<AcademicPeriod> {
-  const existingPeriods = await db.academicPeriods.where("classId").equals(classId).toArray();
-  validateAcademicPeriodDraft(draft, existingPeriods);
-  const now = new Date().toISOString();
-  const period: AcademicPeriod = {
-    id: crypto.randomUUID(),
-    classId,
-    name: draft.name.trim(),
-    startDate: draft.startDate,
-    endDate: draft.endDate,
-    position: existingPeriods.length,
-    status: "open",
-    createdAt: now,
-    updatedAt: now,
-    closureVersion: 0
-  };
-  await db.academicPeriods.add(period);
-  return period;
+  return db.transaction("rw", [db.academicPeriods, db.classGroups], async () => {
+    if (!(await db.classGroups.get(classId))) {
+      throw new Error("The academic period class no longer exists.");
+    }
+    const existingPeriods = await db.academicPeriods.where("classId").equals(classId).toArray();
+    validateAcademicPeriodDraft(draft, existingPeriods);
+    const now = new Date().toISOString();
+    const period: AcademicPeriod = {
+      id: crypto.randomUUID(),
+      classId,
+      name: draft.name.trim(),
+      startDate: draft.startDate,
+      endDate: draft.endDate,
+      position: existingPeriods.length,
+      status: "open",
+      createdAt: now,
+      updatedAt: now,
+      closureVersion: 0
+    };
+    await db.academicPeriods.add(period);
+    return period;
+  });
 }
 
 export async function updateAcademicPeriod(
   periodId: string,
   draft: AcademicPeriodDraft
 ): Promise<void> {
-  const period = await db.academicPeriods.get(periodId);
-  if (!period) {
-    throw new Error("Academic period not found.");
-  }
-  if (period.status === "closed") {
-    throw new Error("Closed academic periods must be reopened before editing.");
-  }
-  const existingPeriods = await db.academicPeriods.where("classId").equals(period.classId).toArray();
-  validateAcademicPeriodDraft(draft, existingPeriods, periodId);
-  await db.academicPeriods.put({
-    ...period,
-    name: draft.name.trim(),
-    startDate: draft.startDate,
-    endDate: draft.endDate,
-    updatedAt: new Date().toISOString()
+  await db.transaction("rw", [db.academicPeriods, db.assessments], async () => {
+    const period = await db.academicPeriods.get(periodId);
+    if (!period) {
+      throw new Error("Academic period not found.");
+    }
+    if (period.status === "closed") {
+      throw new Error("Closed academic periods must be reopened before editing.");
+    }
+    const existingPeriods = await db.academicPeriods.where("classId").equals(period.classId).toArray();
+    validateAcademicPeriodDraft(draft, existingPeriods, periodId);
+    const assessments = await db.assessments.where("[classId+academicPeriodId]")
+      .equals([period.classId, periodId]).toArray();
+    if (assessments.some(assessment => assessment.assessmentDate &&
+        (assessment.assessmentDate < draft.startDate || assessment.assessmentDate > draft.endDate))) {
+      throw new Error("The academic period must include the dates of its assigned assessments.");
+    }
+    await db.academicPeriods.put({
+      ...period,
+      name: draft.name.trim(),
+      startDate: draft.startDate,
+      endDate: draft.endDate,
+      updatedAt: new Date().toISOString()
+    });
   });
 }
 
@@ -343,7 +356,7 @@ async function requireOpenAssignmentPeriods(
       throw new Error("Reopen the academic period before changing its assignments.");
     }
   }
-  if (targetPeriodId && !periods.some((period) => period.id === targetPeriodId)) {
+  if (periodIds.some(id => !periods.some(period => period.id === id))) {
     throw new Error("Academic period not found.");
   }
 }
@@ -352,30 +365,32 @@ export async function assignAssessmentToAcademicPeriod(
   assessmentId: string,
   academicPeriodId?: string
 ): Promise<void> {
-  const assessment = await db.assessments.get(assessmentId);
-  if (!assessment) {
-    throw new Error("Assessment not found.");
-  }
-  await requireOpenAssignmentPeriods(
-    assessment.academicPeriodId,
-    academicPeriodId,
-    assessment.classId
-  );
-  const targetPeriod = academicPeriodId
-    ? await db.academicPeriods.get(academicPeriodId)
-    : undefined;
-  const assessmentDate =
-    targetPeriod &&
-    (!assessment.assessmentDate ||
-      assessment.assessmentDate < targetPeriod.startDate ||
-      assessment.assessmentDate > targetPeriod.endDate)
-      ? targetPeriod.endDate
-      : assessment.assessmentDate;
-  await db.assessments.put({
-    ...assessment,
-    academicPeriodId,
-    assessmentDate,
-    period: targetPeriod?.name ?? assessment.period
+  await db.transaction("rw", [db.assessments, db.academicPeriods], async () => {
+    const assessment = await db.assessments.get(assessmentId);
+    if (!assessment) {
+      throw new Error("Assessment not found.");
+    }
+    await requireOpenAssignmentPeriods(
+      assessment.academicPeriodId,
+      academicPeriodId,
+      assessment.classId
+    );
+    const targetPeriod = academicPeriodId
+      ? await db.academicPeriods.get(academicPeriodId)
+      : undefined;
+    const assessmentDate =
+      targetPeriod &&
+      (!assessment.assessmentDate ||
+        assessment.assessmentDate < targetPeriod.startDate ||
+        assessment.assessmentDate > targetPeriod.endDate)
+        ? targetPeriod.endDate
+        : assessment.assessmentDate;
+    await db.assessments.put({
+      ...assessment,
+      academicPeriodId,
+      assessmentDate,
+      period: targetPeriod?.name ?? assessment.period
+    });
   });
 }
 
@@ -383,33 +398,40 @@ export async function updateManualAssessmentDate(
   assessmentId: string,
   assessmentDate: string
 ): Promise<void> {
-  const assessment = await db.assessments.get(assessmentId);
-  if (!assessment) {
-    throw new Error("Assessment not found.");
-  }
-  requireIsoDate(assessmentDate, "assessmentDate");
-  const period = assessment.academicPeriodId
-    ? await db.academicPeriods.get(assessment.academicPeriodId)
-    : undefined;
-  if (period?.status === "closed") {
-    throw new Error("Reopen the academic period before changing an assessment date.");
-  }
-  if (period && (assessmentDate < period.startDate || assessmentDate > period.endDate)) {
-    throw new Error("The assessment date must fall inside its academic period.");
-  }
-  await db.assessments.put({ ...assessment, assessmentDate });
+  await db.transaction("rw", [db.assessments, db.academicPeriods], async () => {
+    const assessment = await db.assessments.get(assessmentId);
+    if (!assessment) {
+      throw new Error("Assessment not found.");
+    }
+    requireIsoDate(assessmentDate, "assessmentDate");
+    const period = assessment.academicPeriodId
+      ? await db.academicPeriods.get(assessment.academicPeriodId)
+      : undefined;
+    if (assessment.academicPeriodId && (!period || period.classId !== assessment.classId)) {
+      throw new Error("The assessment's academic period no longer exists or belongs to another class.");
+    }
+    if (period?.status === "closed") {
+      throw new Error("Reopen the academic period before changing an assessment date.");
+    }
+    if (period && (assessmentDate < period.startDate || assessmentDate > period.endDate)) {
+      throw new Error("The assessment date must fall inside its academic period.");
+    }
+    await db.assessments.put({ ...assessment, assessmentDate });
+  });
 }
 
 export async function assignTaskConfigToAcademicPeriod(
   configId: string,
   academicPeriodId?: string
 ): Promise<void> {
-  const config = await db.taskGradebookConfigs.get(configId);
-  if (!config) {
-    throw new Error("Task gradebook configuration not found.");
-  }
-  await requireOpenAssignmentPeriods(config.academicPeriodId, academicPeriodId, config.classId);
-  await db.taskGradebookConfigs.put({ ...config, academicPeriodId });
+  await db.transaction("rw", [db.taskGradebookConfigs, db.academicPeriods], async () => {
+    const config = await db.taskGradebookConfigs.get(configId);
+    if (!config) {
+      throw new Error("Task gradebook configuration not found.");
+    }
+    await requireOpenAssignmentPeriods(config.academicPeriodId, academicPeriodId, config.classId);
+    await db.taskGradebookConfigs.put({ ...config, academicPeriodId });
+  });
 }
 
 async function buildPeriodSnapshotData(period: AcademicPeriod): Promise<GradebookPeriodSnapshotData> {
@@ -543,14 +565,16 @@ export async function closeAcademicPeriod(periodId: string): Promise<GradebookPe
 }
 
 export async function reopenAcademicPeriod(periodId: string): Promise<void> {
-  const period = await db.academicPeriods.get(periodId);
-  if (!period) {
-    throw new Error("Academic period not found.");
-  }
-  if (period.status === "open") {
-    return;
-  }
-  await db.academicPeriods.put(buildReopenedAcademicPeriod(period, new Date().toISOString()));
+  await db.transaction("rw", db.academicPeriods, async () => {
+    const period = await db.academicPeriods.get(periodId);
+    if (!period) {
+      throw new Error("Academic period not found.");
+    }
+    if (period.status === "open") {
+      return;
+    }
+    await db.academicPeriods.put(buildReopenedAcademicPeriod(period, new Date().toISOString()));
+  });
 }
 
 async function loadRolloverSource(classId: string): Promise<SchoolYearRolloverSource> {
@@ -645,23 +669,23 @@ export async function rolloverSchoolYear(request: SchoolYearRolloverRequest): Pr
   if (request.targetClassId === request.sourceClassId) {
     throw new Error("Source and target classes must be different.");
   }
-  const source = await loadRolloverSource(request.sourceClassId);
-  const now = new Date().toISOString();
-  const targetClass = request.targetClassId
-    ? await requireEmptyRolloverTarget(request.targetClassId)
-    : {
-        id: crypto.randomUUID(),
-        name: request.targetName.trim(),
-        level: source.classGroup.level,
-        schoolYear: request.targetSchoolYear.trim(),
-        comments: source.classGroup.comments
-      };
-  if (!targetClass.name || !targetClass.schoolYear) {
-    throw new Error("The target class requires a name and school year.");
-  }
-  const rows = buildSchoolYearRolloverRows(source, targetClass, () => crypto.randomUUID(), now);
+  return db.transaction("rw", db.tables, async () => {
+    const source = await loadRolloverSource(request.sourceClassId);
+    const now = new Date().toISOString();
+    const targetClass = request.targetClassId
+      ? await requireEmptyRolloverTarget(request.targetClassId)
+      : {
+          id: crypto.randomUUID(),
+          name: request.targetName.trim(),
+          level: source.classGroup.level,
+          schoolYear: request.targetSchoolYear.trim(),
+          comments: source.classGroup.comments
+        };
+    if (!targetClass.name || !targetClass.schoolYear) {
+      throw new Error("The target class requires a name and school year.");
+    }
+    const rows = buildSchoolYearRolloverRows(source, targetClass, () => crypto.randomUUID(), now);
 
-  await db.transaction("rw", db.tables, async () => {
     if (!request.targetClassId) {
       await db.classGroups.add(rows.classGroup);
     }
@@ -678,6 +702,6 @@ export async function rolloverSchoolYear(request: SchoolYearRolloverRequest): Pr
     await bulkAddIfAny(db.checklistTemplates, rows.checklistTemplates);
     await bulkAddIfAny(db.taskGradebookConfigs, rows.taskGradebookConfigs);
     await bulkAddIfAny(db.assessments, rows.assessments);
+    return rows.classGroup;
   });
-  return rows.classGroup;
 }

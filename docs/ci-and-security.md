@@ -20,6 +20,10 @@ Dependabot proposes grouped compatible npm updates weekly and action updates mon
 
 ## Offline caching and credentials
 
+The npm override pins `minimatch` to 11.0.1 to resolve [GHSA-g3hv-75wg-m249](https://github.com/isaacs/minimatch/security/advisories/GHSA-g3hv-75wg-m249) in the development-tool dependency tree. The upstream correction requires a major version; do not use `npm audit fix --force`, which proposes unrelated tool downgrades. The version 11 API removes `makeRe`, `AST`, and several internal methods, so keep lint and coverage verification enabled when maintaining this override. Lint and coverage verification exercise the repository's current matching paths under the override. Remove the override only when all upstream ranges resolve to corrected versions and the complete verification still passes. This is a dependency resolution fix, not an advisory exception.
+
+Playwright remains pinned to 1.63.0 because the previous review reproduced native select construction triggering false `style-src-attr` violations in the WebKit bundled with 1.64.0/1.64.1 ([upstream regression](https://github.com/microsoft/playwright/issues/43497)). Review that regression before changing the pin; keep strict CSP assertions enabled. This records the reason for the pin, not the current status of the upstream issue.
+
 Internal navigation first completes a form's supported autosave before leaving. Successful saves bypass the discard dialog. Invalid or failed saves still require an explicit discard decision, and forms without autosave retain their unsaved-change confirmation.
 
 The service worker caches only assets listed by the production build. Same-origin API responses, authenticated requests, query-bearing asset URLs, and requests outside the app scope bypass its cache. Online navigation never overwrites the installed build's offline HTML, keeping its shell paired with the installed assets until the next worker activates. Offline deep links return that shell; a missing shell returns HTTP 503.

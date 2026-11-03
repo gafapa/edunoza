@@ -38,7 +38,7 @@ The product name is Edunoza. The primary domain is `edunoza.com`. The interface 
 ## Evidence on Hand
 
 - The implemented product capabilities and security model are documented in `README.md`.
-- Competitive positioning and implemented gaps are documented in `docs/competitive-gap-analysis.md`.
+- Current capabilities and architecture boundaries are documented in `README.md`; maintenance contracts are indexed in `docs/README.md`.
 - Current production traffic does not provide evidence of verified teacher adoption or feature usage.
 - No approved testimonials, customer logos, usage benchmarks, pricing, or institutional claims are available and none may be fabricated.
 

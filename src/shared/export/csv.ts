@@ -1,4 +1,4 @@
-const SPREADSHEET_FORMULA_PREFIX = /^[\t\r ]*[=+\-@]/;
+const SPREADSHEET_FORMULA_PREFIX = /^[\s\u0000-\u001f]*[=+\-@]/;
 
 export function sanitizeSpreadsheetCell(value: unknown): string {
   const text = String(value);

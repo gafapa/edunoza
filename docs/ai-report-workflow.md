@@ -25,14 +25,11 @@ Saved versions include the local group/year/period context, provider, model and 
 
 Automated checks use fictional data and simulated provider responses. They test transport cancellation, truncation flags, archive validation, HTML escaping, editing/version persistence, printable download, and encrypted backup restoration. They do not establish pedagogical quality across real providers; teacher review remains required.
 
-## Release verification
-
-Published after `npm run verify` and the complete 20-test browser suite passed: 285 unit tests, two script tests, lint, type checks, production build and a dependency audit reporting no known vulnerabilities. Post-deployment checks verified 52 files against the local build, security headers, and seven rendered routes without uncaught JavaScript errors. Desktop and 390px editor screenshots were inspected in two bounded passes.
-
 ## Native export implementation and QA
 
 The native-format extension uses [docx](https://docx.js.org/api/classes/Packer.html) for browser-side OOXML packaging, [fflate](https://github.com/101arrowz/fflate) for the ODT ZIP, and [pdf-lib](https://pdf-lib.js.org/) with fontkit for PDF layout and embedding. The Noto Sans font is distributed with its [SIL Open Font License](https://github.com/notofonts/noto-fonts/blob/main/LICENSE) in `public/fonts/NotoSans-LICENSE.txt`.
 
 Tests verify editable accented text, XML escaping, package signatures, the uncompressed first ODT mimetype entry, A4 layout, multi-page PDF generation, long-word wrapping, invalid input and font-download failures. Browser coverage verifies all three actual downloads contain edited text and make no external HTTP requests; downloads do not create an archive version. Fictional Word/ODT packages were parsed as XML, and all pages of the two-page PDF fixture were rendered and visually inspected. This is not a native Microsoft Word or LibreOffice visual compatibility certification.
 
-Released on 2026-09-09 after 291 unit tests, two script tests and all 21 browser tests passed, along with lint, type checks, production compilation and dependency audit (no known vulnerabilities). Production checks compared 60 files including the PDF font against the validated build and checked security headers and seven application routes. The fontkit export chunk exceeds the default 500 kB build warning threshold; it is dynamically imported rather than loaded into the initial application module graph.
+
+See [CI and security](ci-and-security.md) for current verification commands. The fontkit export dependency is large and loads on demand; old release test counts do not describe current validation.

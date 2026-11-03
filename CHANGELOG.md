@@ -2,6 +2,20 @@
 
 ## Unreleased
 
+### Integrity and dependency security
+
+- Make academic-period lifecycle changes and school-year rollover transactional, rejecting concurrent overlaps, duplicate target population, missing periods, and date ranges that invalidate assigned assessments.
+- Check the reviewed task configuration and academic-period status inside evaluation, weight, and task-folder writes; preserve drafts and show recoverable errors on failed or stale saves.
+- Guard manual assessment creation with a transaction so its automatic period assignment cannot race a closure.
+- Neutralize CSV formula prefixes following line breaks, Unicode whitespace, byte-order marks, and control characters.
+- Update compatible locked dependencies and React Router to 7.18.5; override development-tool `minimatch` to the corrected 11.0.1 without audit exceptions. Retain the documented TypeScript and Playwright compatibility limits.
+
+### Repository maintenance
+
+- Consolidate completed plans and dated review reports into maintained integration, security, and data-integrity documentation, indexed by `docs/README.md`.
+- Refresh the agent guide to match the current toolchain and deployment; remove obsolete one-off form migration tooling and generated QA output.
+- Extend `npm run clean` to remove browser results and QA scratch directories without traversing directory symlinks or touching workspace/Git metadata.
+
 ### Behavior controls
 
 - Keep positive and negative behavior controls in a wrapping full-width row, with responsive attendance rows based on panel width.
