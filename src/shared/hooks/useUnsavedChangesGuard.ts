@@ -4,11 +4,23 @@ import { useUnsavedChangesDialog } from "../ui/UnsavedChangesDialog";
 
 const DEFAULT_MESSAGE = "Tienes cambios sin guardar. Si sales ahora, se perderan.";
 
+type Guard = { when: boolean; message: string; beforeLeave?: () => Promise<boolean> };
+
+// React Router supports a single active blocker, but nested pages (e.g. the tutor panel inside
+// the students page) can each have unsaved changes. Pages register here and one blocker decides.
+const guards = new Set<{ current: Guard }>();
+
+function dirtyGuards(): { current: Guard }[] {
+  return [...guards].filter((guard) => guard.current.when);
+}
+
 export function useUnsavedChangesGuard(when: boolean, message = DEFAULT_MESSAGE, beforeLeave?: () => Promise<boolean>): void {
-  const dialog = useUnsavedChangesDialog();
-  const latest = useRef({ when, beforeLeave, message, dialog });
-  const navigating = useRef(false);
-  useEffect(() => { latest.current = { when, beforeLeave, message, dialog }; }, [when, beforeLeave, message, dialog]);
+  const latest = useRef<Guard>({ when, message, beforeLeave });
+  useEffect(() => { latest.current = { when, message, beforeLeave }; }, [when, message, beforeLeave]);
+  useEffect(() => {
+    guards.add(latest);
+    return () => { guards.delete(latest); };
+  }, []);
 
   const handleBeforeUnload = useCallback(
     (event: BeforeUnloadEvent) => {
@@ -22,9 +34,14 @@ export function useUnsavedChangesGuard(when: boolean, message = DEFAULT_MESSAGE,
   );
 
   useBeforeUnload(handleBeforeUnload, { capture: true });
+}
 
-  const blocker = useBlocker(when);
+/** The app's only navigation blocker; mount once inside the data router. */
+export function UnsavedChangesBlocker(): null {
+  const dialog = useUnsavedChangesDialog();
+  const blocker = useBlocker(() => dirtyGuards().length > 0);
   const latestBlocker = useRef(blocker);
+  const navigating = useRef(false);
   useEffect(() => { latestBlocker.current = blocker; }, [blocker]);
 
   useEffect(() => {
@@ -37,32 +54,29 @@ export function useUnsavedChangesGuard(when: boolean, message = DEFAULT_MESSAGE,
 
     void (async () => {
       try {
-        const { when: stillDirty, beforeLeave: save, message: prompt, dialog: confirmDialog } = latest.current;
-        if (!stillDirty) {
+        // Pages that can save on their own do so first; any page left dirty needs a decision.
+        const pending: { current: Guard }[] = [];
+        for (const guard of dirtyGuards()) {
+          let saved = false;
+          const save = guard.current.beforeLeave;
+          if (save) {
+            try {
+              saved = await save();
+            } catch {
+              // A failed save still requires an explicit decision to discard changes.
+            }
+          }
+          if (!saved) pending.push(guard);
+        }
+        const stillDirty = pending.filter((guard) => guard.current.when);
+        if (stillDirty.length === 0) {
           leave();
           return;
         }
-        if (save) {
-          let saved = false;
-          try {
-            saved = await save();
-          } catch {
-            // A failed save still requires an explicit decision to discard changes.
-          }
-          if (saved) {
-            leave();
-            return;
-          }
-        }
-        const shouldLeave = confirmDialog
-          ? await confirmDialog.confirmLeave(prompt)
-          : window.confirm(prompt);
-
-        if (shouldLeave) {
-          leave();
-        } else {
-          stay();
-        }
+        const prompt = stillDirty[0].current.message;
+        const shouldLeave = dialog ? await dialog.confirmLeave(prompt) : window.confirm(prompt);
+        if (shouldLeave) leave();
+        else stay();
       } catch {
         // Stay on the current form if a save fails unexpectedly.
         stay();
@@ -70,5 +84,6 @@ export function useUnsavedChangesGuard(when: boolean, message = DEFAULT_MESSAGE,
         navigating.current = false;
       }
     })();
-  }, [blocker.state]);
+  }, [blocker.state, dialog]);
+  return null;
 }

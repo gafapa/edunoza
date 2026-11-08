@@ -6,6 +6,7 @@ import App from "./App";
 import { store } from "./app/store";
 import { AppErrorBoundary } from "./shared/ui/AppErrorBoundary";
 import { UnsavedChangesDialogProvider } from "./shared/ui/UnsavedChangesDialog";
+import { UnsavedChangesBlocker } from "./shared/hooks/useUnsavedChangesGuard";
 import { registerServiceWorker } from "./shared/offline/registerServiceWorker";
 import "./styles.css";
 import "./styles/public.css";
@@ -29,7 +30,7 @@ function RethrowRouteError(): never {
 
 // App declares its own descendant <Routes>; the data router only enables navigation blocking.
 const router = createBrowserRouter(
-  [{ path: "*", element: <App />, ErrorBoundary: RethrowRouteError }],
+  [{ path: "*", element: <><UnsavedChangesBlocker /><App /></>, ErrorBoundary: RethrowRouteError }],
   { basename: resolveRouterBase() }
 );
 
