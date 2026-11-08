@@ -75,7 +75,11 @@ export function TodayPage() {
   const [allStudents, setAllStudents] = useState<Student[]>([]);
   const [subjectStudentLinks, setSubjectStudentLinks] = useState<SubjectStudentLink[]>([]);
   const [attendanceEntries, setAttendanceEntries] = useState<AttendanceEntry[]>([]);
-  const [dailyClassRecords, setDailyClassRecords] = useState<DailyClassRecord[]>([]);
+  // Day-scoped rows below belong to `dayRecordsDate`; the page only reads the selected date.
+  const [dayRecordsDate, setDayRecordsDate] = useState("");
+  const [dayClassRecords, setDayClassRecords] = useState<DailyClassRecord[]>([]);
+  // Rescheduled records can hide a recurring slot on their original date, which is not indexed.
+  const [rescheduledRecords, setRescheduledRecords] = useState<DailyClassRecord[]>([]);
   const [tasks, setTasks] = useState<Task[]>([]);
   const [taskSessions, setTaskSessions] = useState<TaskSession[]>([]);
   const [taskDailySettings, setTaskDailySettings] = useState<TaskDailyEvaluationSetting[]>([]);
@@ -83,6 +87,7 @@ export function TodayPage() {
   const [behaviorMarks, setBehaviorMarks] = useState<BehaviorMark[]>([]);
   const [isSavingBehavior, setIsSavingBehavior] = useState(false);
   const behaviorWritePending = useRef(false);
+  const dayLoadSeqRef = useRef(0);
   const [statusDraft, setStatusDraft] = useState<Map<string, AttendanceEntry["status"]>>(new Map());
   const [noteDraft, setNoteDraft] = useState<Map<string, string>>(new Map());
   const [attendanceDetailsDraft, setAttendanceDetailsDraft] = useState<Map<string, AttendanceDetailsDraft>>(new Map());
@@ -113,11 +118,7 @@ export function TodayPage() {
       studentsData,
       subjectStudentLinksData,
       tasksData,
-      taskSessionsData,
-      taskDailySettingsData,
-      taskStudentCommentsData,
-      dailyClassRecordsData,
-      behaviorMarksData
+      rescheduledRecordsData
     ] = await Promise.all([
       db.classGroups.orderBy("name").toArray(),
       db.subjects.orderBy("name").toArray(),
@@ -126,11 +127,7 @@ export function TodayPage() {
       db.students.toArray(),
       db.subjectStudentLinks.toArray(),
       db.tasks.toArray(),
-      db.taskSessions.toArray(),
-      db.taskDailyEvaluationSettings.toArray(),
-      db.taskStudentComments.toArray(),
-      db.dailyClassRecords.toArray(),
-      db.behaviorMarks.toArray()
+      db.dailyClassRecords.filter((record) => record.sessionKind === "rescheduled").toArray()
     ]);
 
     setClassGroups(classGroupsData);
@@ -140,20 +137,67 @@ export function TodayPage() {
     setAllStudents(studentsData.sort(compareFn));
     setSubjectStudentLinks(subjectStudentLinksData);
     setTasks(tasksData.sort((a, b) => a.title.localeCompare(b.title)));
-    setTaskSessions(taskSessionsData);
-    setTaskDailySettings(taskDailySettingsData);
-    setTaskStudentComments(taskStudentCommentsData);
-    setDailyClassRecords(dailyClassRecordsData);
-    setBehaviorMarks(behaviorMarksData);
+    setRescheduledRecords(rescheduledRecordsData);
+  };
+
+  const queryDayClassRecords = (date: string) =>
+    db.transaction(
+      "r",
+      [db.taskSessions, db.taskDailyEvaluationSettings, db.taskStudentComments, db.dailyClassRecords],
+      () => Promise.all([
+        db.taskSessions.where("date").equals(date).toArray(),
+        db.taskDailyEvaluationSettings.where("date").equals(date).toArray(),
+        db.taskStudentComments.where("date").equals(date).toArray(),
+        db.dailyClassRecords.where("date").equals(date).toArray()
+      ])
+    );
+
+  const applyDayClassRecords = (
+    date: string,
+    [sessions, settings, comments, records]: Awaited<ReturnType<typeof queryDayClassRecords>>
+  ): void => {
+    setTaskSessions(sessions);
+    setTaskDailySettings(settings);
+    setTaskStudentComments(comments);
+    setDayClassRecords(records);
+    setDayRecordsDate(date);
   };
 
   useEffect(() => {
     void loadMetadata();
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  useEffect(() => {
+    let active = true;
+    const seq = ++dayLoadSeqRef.current;
+    void Promise.all([
+      queryDayClassRecords(selectedDate),
+      db.behaviorMarks.where("date").equals(selectedDate).toArray()
+    ]).then(([dayRecords, marks]) => {
+      if (!active || seq !== dayLoadSeqRef.current) return;
+      applyDayClassRecords(selectedDate, dayRecords);
+      setBehaviorMarks(marks);
+    }).catch((error: unknown) => {
+      if (!active) return;
+      const message = error instanceof Error ? error.message : "Error desconocido";
+      setNotice(`No se pudo cargar el día: ${message}`);
+    });
+    return () => {
+      active = false;
+    };
+  }, [selectedDate]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const dailyClassRecords = useMemo(() => {
+    const dayIds = new Set(dayClassRecords.map((record) => record.id));
+    return [
+      ...dayClassRecords,
+      ...rescheduledRecords.filter((record) => record.originalDate === selectedDate && !dayIds.has(record.id))
+    ];
+  }, [dayClassRecords, rescheduledRecords, selectedDate]);
+
   const allTodaySlots = useMemo(
     () =>
-      buildTodaySlots({
+      dayRecordsDate !== selectedDate ? [] : buildTodaySlots({
         selectedDate,
         classGroups,
         subjects,
@@ -163,7 +207,7 @@ export function TodayPage() {
         tasks,
         dailyClassRecords
       }),
-    [classGroups, dailyClassRecords, scheduleDays, selectedDate, subjectCourseLinks, subjects, taskSessions, tasks]
+    [classGroups, dailyClassRecords, dayRecordsDate, scheduleDays, selectedDate, subjectCourseLinks, subjects, taskSessions, tasks]
   );
 
   const todaySlots = useMemo(
@@ -192,6 +236,8 @@ export function TodayPage() {
   }, [classGroups, dispatch, searchParams, selectedClassId]);
 
   useEffect(() => {
+    // Keep the current selection and deep link pending until the selected date's rows are loaded.
+    if (dayRecordsDate !== selectedDate) return;
     if (todaySlots.length === 0) {
       setSelectedSlotKey("");
       return;
@@ -216,7 +262,7 @@ export function TodayPage() {
     if (!todaySlots.some((slot) => slot.key === selectedSlotKey)) {
       setSelectedSlotKey(closestSlotKey(todaySlots, selectedDate));
     }
-  }, [classGroups, searchParams, selectedClassId, selectedDate, selectedSlotKey, todaySlots]);
+  }, [classGroups, dayRecordsDate, searchParams, selectedClassId, selectedDate, selectedSlotKey, todaySlots]);
 
   const selectedSlot = useMemo(
     () => todaySlots.find((slot) => slot.key === selectedSlotKey) ?? null,
@@ -296,15 +342,17 @@ export function TodayPage() {
           createdAt: new Date().toISOString()
         };
         await db.behaviorMarks.add(mark);
+        setBehaviorMarks((current) => [...current, mark]);
       } else {
-        await db.transaction("rw", db.behaviorMarks, async () => {
+        const deletedId = await db.transaction("rw", db.behaviorMarks, async () => {
           const marks = await db.behaviorMarks.where("[studentId+date]").equals([studentId, selectedDate])
             .filter(mark => mark.classId === selectedSlot.classId && mark.kind === kind).sortBy("createdAt");
           const latest = marks[marks.length - 1];
           if (latest) await db.behaviorMarks.delete(latest.id);
+          return latest?.id;
         });
+        if (deletedId) setBehaviorMarks((current) => current.filter((mark) => mark.id !== deletedId));
       }
-      setBehaviorMarks(await db.behaviorMarks.toArray());
       const label = kind === "positive" ? "Positivo" : "Negativo";
       setNotice(`${label} ${action === "add" ? "añadido" : "retirado"}.`);
     } catch {
@@ -317,8 +365,9 @@ export function TodayPage() {
 
   const changeSessionStatus = async (session: TaskSession, status: TaskSession["status"]): Promise<void> => {
     if (status === session.status) return;
-    await db.taskSessions.put({ ...session, status });
-    setTaskSessions(await db.taskSessions.toArray());
+    const updatedSession = { ...session, status };
+    await db.taskSessions.put(updatedSession);
+    setTaskSessions((current) => current.map((item) => (item.id === session.id ? updatedSession : item)));
     setNotice(`Sesión marcada como "${SESSION_STATUS_LABELS[status]}".`);
   };
 
@@ -619,15 +668,12 @@ export function TodayPage() {
         }
       );
 
-      const [savedAttendance, settings, savedComments, savedDailyRecords, savedSessions] = await Promise.all([
+      const [savedAttendance, savedDayRecords] = await Promise.all([
         db.attendanceEntries
           .where("[classId+date+scheduleSlotId]")
           .equals([selectedSlot.classId, selectedDate, selectedSlot.slotId])
           .toArray(),
-        db.taskDailyEvaluationSettings.toArray(),
-        db.taskStudentComments.toArray(),
-        db.dailyClassRecords.toArray(),
-        db.taskSessions.toArray()
+        queryDayClassRecords(selectedDate)
       ]);
       const currentContext = selectionContextRef.current;
       if (
@@ -637,10 +683,8 @@ export function TodayPage() {
         return true;
       }
       setAttendanceEntries(savedAttendance);
-      setTaskDailySettings(settings);
-      setTaskStudentComments(savedComments);
-      setDailyClassRecords(savedDailyRecords);
-      setTaskSessions(savedSessions);
+      dayLoadSeqRef.current += 1;
+      applyDayClassRecords(selectedDate, savedDayRecords);
       setStatusDraft(new Map());
       setBulkAttendanceUndo(null);
       setNoteDraft(new Map());
@@ -804,12 +848,17 @@ export function TodayPage() {
           });
         }
       });
-      const [savedRecords, savedSessions] = await Promise.all([
-        db.dailyClassRecords.toArray(),
-        db.taskSessions.toArray()
-      ]);
-      setDailyClassRecords(savedRecords);
-      setTaskSessions(savedSessions);
+      if (record.sessionKind === "rescheduled") {
+        setRescheduledRecords((current) => [...current, record]);
+      }
+      // Another date reloads through the date effect; the same date needs a scoped refresh here.
+      if (record.date === selectedDate) {
+        const savedDayRecords = await queryDayClassRecords(record.date);
+        if (selectionContextRef.current.selectedDate === record.date) {
+          dayLoadSeqRef.current += 1;
+          applyDayClassRecords(record.date, savedDayRecords);
+        }
+      }
       setExceptionalSessionMode(null);
       setSelectedDate(record.date);
       setSelectedSlotKey(

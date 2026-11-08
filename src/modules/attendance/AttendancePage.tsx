@@ -151,6 +151,57 @@ export function AttendancePage() {
     setTaskDirectGrades(taskDirectGradesData);
   };
 
+  /** Re-read only the evaluation rows a task-diary save can replace, by their compound indexes. */
+  const refreshSavedTaskEvaluation = async (scope: {
+    taskId: string;
+    classId: string;
+    subjectId: string;
+    date: string;
+    scheduleSlotId: string;
+    includeDirectGrades: boolean;
+  }): Promise<void> => {
+    const { taskId, classId, subjectId, date, scheduleSlotId, includeDirectGrades } = scope;
+    const dayKey = [taskId, classId, subjectId, date, scheduleSlotId];
+    const dayIndex = "[taskId+classId+subjectId+date+scheduleSlotId]";
+    const [comments, settings, rubricRows, checklistRows, directGrades] = await db.transaction(
+      "r",
+      [
+        db.taskStudentComments,
+        db.taskDailyEvaluationSettings,
+        db.taskRubricAssessments,
+        db.taskChecklistAssessments,
+        db.taskDirectGrades
+      ],
+      () => Promise.all([
+        db.taskStudentComments.where(dayIndex).equals(dayKey).toArray(),
+        db.taskDailyEvaluationSettings.where(dayIndex).equals(dayKey).toArray(),
+        db.taskRubricAssessments.where(dayIndex).equals(dayKey).toArray(),
+        db.taskChecklistAssessments.where(dayIndex).equals(dayKey).toArray(),
+        includeDirectGrades
+          ? db.taskDirectGrades.where("[taskId+subjectId+classId]").equals([taskId, subjectId, classId]).toArray()
+          : Promise.resolve(null)
+      ])
+    );
+    const inDay = (row: { taskId: string; classId?: string; subjectId?: string; date: string; scheduleSlotId: string }) =>
+      row.taskId === taskId &&
+      row.classId === classId &&
+      row.subjectId === subjectId &&
+      row.date === date &&
+      row.scheduleSlotId === scheduleSlotId;
+    setTaskStudentComments((current) => [...current.filter((row) => !inDay(row)), ...comments]);
+    setTaskDailyEvaluationSettings((current) => [...current.filter((row) => !inDay(row)), ...settings]);
+    setTaskRubricAssessments((current) => [...current.filter((row) => !inDay(row)), ...rubricRows]);
+    setTaskChecklistAssessments((current) => [...current.filter((row) => !inDay(row)), ...checklistRows]);
+    if (directGrades) {
+      setTaskDirectGrades((current) => [
+        ...current.filter(
+          (row) => !(row.taskId === taskId && row.subjectId === subjectId && row.classId === classId)
+        ),
+        ...directGrades
+      ]);
+    }
+  };
+
   const workSubjects = useMemo(() => {
     if (!selectedClassId) {
       return [];
@@ -740,7 +791,14 @@ export function AttendancePage() {
       if (taskEditVersionRef.current === saveVersion) {
         setTaskDirty(false);
         setTaskNotice("Registro de tarea guardado automaticamente.");
-        await loadMetadata();
+        await refreshSavedTaskEvaluation({
+          taskId,
+          classId: selectedClassId,
+          subjectId: selectedSubjectId,
+          date: diaryDate,
+          scheduleSlotId,
+          includeDirectGrades: usesDirectGrade
+        });
       }
       return true;
     } catch (error) {
