@@ -3,7 +3,9 @@ import {
   useCallback,
   useContext,
   useEffect,
+  useLayoutEffect,
   useMemo,
+  useRef,
   useState,
   type ReactNode
 } from "react";
@@ -95,6 +97,49 @@ type ManagementContextValue = {
   addTaskSubjectLink: (taskId: string, subjectId: string, unitId?: string) => Promise<void>;
   updateTaskSubjectLink: (linkId: string, unitId: string | undefined) => Promise<boolean>;
 };
+
+type ManagedTable =
+  | "courses"
+  | "students"
+  | "subjects"
+  | "units"
+  | "subjectCourseLinks"
+  | "subjectStudentLinks"
+  | "scheduleDays"
+  | "scheduleSettings"
+  | "taskSubjectLinks"
+  | "tasks";
+
+const ALL_MANAGED_TABLES: readonly ManagedTable[] = [
+  "courses",
+  "students",
+  "subjects",
+  "units",
+  "subjectCourseLinks",
+  "subjectStudentLinks",
+  "scheduleDays",
+  "scheduleSettings",
+  "taskSubjectLinks",
+  "tasks"
+];
+
+type ManagementActions = Omit<
+  ManagementContextValue,
+  | "courses"
+  | "students"
+  | "subjects"
+  | "units"
+  | "scheduleDays"
+  | "scheduleSettings"
+  | "subjectCourseLinks"
+  | "taskSubjectLinks"
+  | "allTasks"
+  | "notice"
+  | "isBusy"
+  | "isReady"
+  | "setNotice"
+  | "getEnrollmentRows"
+>;
 
 const ManagementContext = createContext<ManagementContextValue | null>(null);
 
@@ -284,57 +329,81 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
     ];
   };
 
-  const loadAll = useCallback(async (): Promise<void> => {
+  // Read the sort preference through a ref so reloading data does not depend on it;
+  // a preference change only reorders the in-memory list (see effect below).
+  const studentSortByRef = useRef(studentSortBy);
+  useLayoutEffect(() => {
+    studentSortByRef.current = studentSortBy;
+  }, [studentSortBy]);
+
+  const loadScheduleDays = useCallback(async (): Promise<ScheduleDay[]> => {
     const existingScheduleDays = await db.scheduleDays.orderBy("dayOfWeek").toArray();
     const completedScheduleDays =
       existingScheduleDays.length === 0 ? defaultScheduleDays() : completeScheduleDays(existingScheduleDays);
     if (completedScheduleDays.length !== existingScheduleDays.length) {
       await db.scheduleDays.bulkPut(completedScheduleDays);
     }
-    if (!(await db.scheduleSettings.get("default"))) {
-      await db.scheduleSettings.put({ id: "default", defaultBlockDurationMinutes: 50 });
+    return completedScheduleDays;
+  }, []);
+
+  const loadScheduleSettings = useCallback(async (): Promise<ScheduleSettings> => {
+    const existing = await db.scheduleSettings.get("default");
+    if (existing) {
+      return existing;
     }
+    const fallback: ScheduleSettings = { id: "default", defaultBlockDurationMinutes: 50 };
+    await db.scheduleSettings.put(fallback);
+    return fallback;
+  }, []);
 
-    const [
-      coursesData,
-      studentsData,
-      subjectsData,
-      unitsData,
-      linksData,
-      studentLinksData,
-      scheduleDaysData,
-      scheduleSettingsData,
-      taskSubjectLinksData,
-      allTasksData
-    ] = await Promise.all([
-      db.classGroups.orderBy("name").toArray(),
-      db.students.toArray(),
-      db.subjects.orderBy("name").toArray(),
-      db.unitBlocks.orderBy("[subjectId+position]").toArray(),
-      db.subjectCourseLinks.toArray(),
-      db.subjectStudentLinks.toArray(),
-      Promise.resolve(completedScheduleDays),
-      db.scheduleSettings.get("default"),
-      db.taskSubjectLinks.toArray(),
-      db.tasks.toArray()
-    ]);
-
-    setCourses(coursesData);
-    setStudents(studentsData.sort(compareStudentsByField(studentSortBy)));
-    setSubjects(subjectsData);
-    setUnits(unitsData);
-    setScheduleDays(scheduleDaysData);
-    setScheduleSettings(
-      scheduleSettingsData ?? {
-        id: "default",
-        defaultBlockDurationMinutes: 50
+  // Re-read only the given tables, then apply all state updates together.
+  const reload = useCallback(
+    async (tables: readonly ManagedTable[]): Promise<void> => {
+      const wanted = new Set(tables);
+      const loaders: Array<Promise<() => void>> = [];
+      if (wanted.has("courses")) {
+        loaders.push(db.classGroups.orderBy("name").toArray().then((rows) => () => setCourses(rows)));
       }
-    );
-    setSubjectCourseLinks(linksData);
-    setSubjectStudentLinks(studentLinksData);
-    setTaskSubjectLinks(taskSubjectLinksData);
-    setAllTasks(allTasksData);
-  }, [studentSortBy]);
+      if (wanted.has("students")) {
+        loaders.push(
+          db.students
+            .toArray()
+            .then((rows) => () => setStudents(rows.sort(compareStudentsByField(studentSortByRef.current))))
+        );
+      }
+      if (wanted.has("subjects")) {
+        loaders.push(db.subjects.orderBy("name").toArray().then((rows) => () => setSubjects(rows)));
+      }
+      if (wanted.has("units")) {
+        loaders.push(db.unitBlocks.orderBy("[subjectId+position]").toArray().then((rows) => () => setUnits(rows)));
+      }
+      if (wanted.has("subjectCourseLinks")) {
+        loaders.push(db.subjectCourseLinks.toArray().then((rows) => () => setSubjectCourseLinks(rows)));
+      }
+      if (wanted.has("subjectStudentLinks")) {
+        loaders.push(db.subjectStudentLinks.toArray().then((rows) => () => setSubjectStudentLinks(rows)));
+      }
+      if (wanted.has("scheduleDays")) {
+        loaders.push(loadScheduleDays().then((rows) => () => setScheduleDays(rows)));
+      }
+      if (wanted.has("scheduleSettings")) {
+        loaders.push(loadScheduleSettings().then((row) => () => setScheduleSettings(row)));
+      }
+      if (wanted.has("taskSubjectLinks")) {
+        loaders.push(db.taskSubjectLinks.toArray().then((rows) => () => setTaskSubjectLinks(rows)));
+      }
+      if (wanted.has("tasks")) {
+        loaders.push(db.tasks.toArray().then((rows) => () => setAllTasks(rows)));
+      }
+      const apply = await Promise.all(loaders);
+      for (const update of apply) {
+        update();
+      }
+    },
+    [loadScheduleDays, loadScheduleSettings]
+  );
+
+  const loadAll = useCallback((): Promise<void> => reload(ALL_MANAGED_TABLES), [reload]);
 
   useEffect(() => {
     void runWithProgress(loadAll)
@@ -394,7 +463,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       comments: commentsValue?.trim() || undefined
     });
     setNotice("Curso creado.");
-    await loadAll();
+    await reload(["courses"]);
   };
 
   const createEmptyCourse = async (): Promise<string | null> => {
@@ -408,7 +477,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       schoolYear
     });
     setNotice("Curso creado. Completa sus datos.");
-    await loadAll();
+    await reload(["courses"]);
     return id;
   };
 
@@ -435,7 +504,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       comments: commentsValue?.trim() || undefined
     });
     setNotice("Curso actualizado.");
-    await loadAll();
+    await reload(["courses"]);
     return true;
   };
 
@@ -513,7 +582,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       await db.classGroups.delete(courseId);
     });
     setNotice("Curso eliminado.");
-    await loadAll();
+    await reload(["courses", "students", "subjectCourseLinks"]);
   };
 
   const createEmptyStudent = async (courseId?: string): Promise<string | null> => {
@@ -535,7 +604,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       hasReinforcement: false
     });
     setNotice("Alumno creado. Completa sus datos.");
-    await loadAll();
+    await reload(["students"]);
     return id;
   };
 
@@ -575,7 +644,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       }
     });
     setNotice("Alumno movido de curso.");
-    await loadAll();
+    await reload(["students", "subjectStudentLinks"]);
   };
 
   const updateStudent = async (
@@ -629,7 +698,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       }
     });
     setNotice("Alumno actualizado.");
-    await loadAll();
+    await reload(["students", "subjectStudentLinks"]);
     return true;
   };
 
@@ -661,7 +730,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       await db.students.delete(studentId);
     });
     setNotice("Alumno eliminado.");
-    await loadAll();
+    await reload(["students", "subjectStudentLinks"]);
   };
 
   const createEmptySubject = async (courseId?: string): Promise<string | null> => {
@@ -686,7 +755,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
     });
 
     setNotice("Asignatura creada. Completa sus datos.");
-    await loadAll();
+    await reload(["subjects", "subjectCourseLinks"]);
     return subjectId;
   };
 
@@ -766,7 +835,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
     );
 
     setNotice("Asignatura actualizada.");
-    await loadAll();
+    await reload(["subjects", "subjectCourseLinks"]);
     return true;
   };
 
@@ -811,7 +880,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       await db.subjects.delete(subjectId);
     });
     setNotice("Asignatura eliminada.");
-    await loadAll();
+    await reload(["subjects", "subjectCourseLinks", "subjectStudentLinks", "units", "taskSubjectLinks"]);
   };
 
   const setStudentEnrollment = async (
@@ -846,7 +915,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       await db.subjectStudentLinks.delete(existing.id);
     }
 
-    await loadAll();
+    await reload(["subjectStudentLinks"]);
   };
 
   const bulkAssignGroupStudentsToSubject = async (
@@ -887,23 +956,26 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
         ? `Se asignaron ${itemsToAdd.length} fichas del grupo a la asignatura.`
         : "No había alumnos nuevos para asignar."
     );
-    await loadAll();
+    await reload(["subjectStudentLinks"]);
   };
 
-  const getEnrollmentRows = (subjectId: string): EnrollmentRow[] => {
-    if (!subjectId) {
-      return [];
-    }
-    const linkedCourses = linksBySubject.get(subjectId) ?? new Set<string>();
-    const assignedStudents = studentLinksBySubject.get(subjectId) ?? new Set<string>();
+  const getEnrollmentRows = useCallback(
+    (subjectId: string): EnrollmentRow[] => {
+      if (!subjectId) {
+        return [];
+      }
+      const linkedCourses = linksBySubject.get(subjectId) ?? new Set<string>();
+      const assignedStudents = studentLinksBySubject.get(subjectId) ?? new Set<string>();
 
-    return students.map((student) => ({
-      student,
-      courseName: courseMap.get(student.classId)?.name ?? "-",
-      derivedIncluded: linkedCourses.has(student.classId),
-      effectiveIncluded: assignedStudents.has(student.id)
-    }));
-  };
+      return students.map((student) => ({
+        student,
+        courseName: courseMap.get(student.classId)?.name ?? "-",
+        derivedIncluded: linkedCourses.has(student.classId),
+        effectiveIncluded: assignedStudents.has(student.id)
+      }));
+    },
+    [courseMap, linksBySubject, studentLinksBySubject, students]
+  );
 
   const updateScheduleDay = async (day: ScheduleDay): Promise<boolean> => {
     const validationError = validateScheduleDay(day);
@@ -1049,14 +1121,14 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
         });
       }
     });
-    await loadAll();
+    await reload(["scheduleDays", "subjects"]);
     setNotice("Horario actualizado.");
     return true;
   };
 
   const updateScheduleSettings = async (settings: ScheduleSettings): Promise<boolean> => {
     await db.scheduleSettings.put(settings);
-    await loadAll();
+    await reload(["scheduleSettings"]);
     return true;
   };
 
@@ -1078,7 +1150,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
     });
 
     setNotice("Unidad creada. Completa sus datos.");
-    await loadAll();
+    await reload(["units"]);
     return id;
   };
 
@@ -1106,7 +1178,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       sessionCount
     });
     setNotice("Unidad actualizada.");
-    await loadAll();
+    await reload(["units"]);
     return true;
   };
 
@@ -1118,7 +1190,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
     }
     await db.unitBlocks.delete(unitId);
     setNotice("Unidad eliminada.");
-    await loadAll();
+    await reload(["units", "taskSubjectLinks"]);
   };
 
 
@@ -1132,7 +1204,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       sendToGradebook: false
     });
     setNotice("Tarea creada. Completa sus datos.");
-    await loadAll();
+    await reload(["tasks"]);
     return id;
   };
 
@@ -1160,7 +1232,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       sendToGradebook
     });
     setNotice("Tarea actualizada.");
-    await loadAll();
+    await reload(["tasks"]);
     return true;
   };
 
@@ -1219,7 +1291,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       await db.tasks.delete(taskId);
     });
     setNotice("Tarea eliminada.");
-    await loadAll();
+    await reload(["tasks", "taskSubjectLinks"]);
   };
 
   const addTaskSubjectLink = async (
@@ -1241,7 +1313,7 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       unitId: unitId || undefined
     });
     setNotice("Tarea vinculada.");
-    await loadAll();
+    await reload(["taskSubjectLinks"]);
   };
 
   const updateTaskSubjectLink = async (
@@ -1258,51 +1330,107 @@ export function ManagementProvider({ children }: { children: ReactNode }) {
       }
     }
     await db.taskSubjectLinks.put({ ...existing, unitId: unitId || undefined });
-    await loadAll();
+    await reload(["taskSubjectLinks"]);
     return true;
   };
 
-  const value: ManagementContextValue = {
-    courses,
-    students,
-    subjects,
-    units,
-    scheduleDays,
-    scheduleSettings,
-    subjectCourseLinks,
-    taskSubjectLinks,
-    allTasks,
-    notice,
-    isBusy,
-    isReady,
-    setNotice,
-    refreshAll: () => runWithProgress(() => loadAll()),
-    createCourse: (...args) => runWithProgress(() => createCourse(...args)),
-    createEmptyCourse: () => runWithProgress(() => createEmptyCourse()),
-    updateCourse: (...args) => runSaveWithProgress(() => updateCourse(...args)),
-    deleteCourse: (...args) => runWithProgress(() => deleteCourse(...args)),
-    createEmptyStudent: (...args) => runWithProgress(() => createEmptyStudent(...args)),
-    updateStudent: (...args) => runSaveWithProgress(() => updateStudent(...args)),
-    addStudentToCourse: (...args) => runWithProgress(() => addStudentToCourse(...args)),
-    deleteStudent: (...args) => runWithProgress(() => deleteStudent(...args)),
-    createEmptySubject: (...args) => runWithProgress(() => createEmptySubject(...args)),
-    updateSubject: (...args) => runSaveWithProgress(() => updateSubject(...args)),
-    deleteSubject: (...args) => runWithProgress(() => deleteSubject(...args)),
-    setStudentEnrollment: (...args) => runWithProgress(() => setStudentEnrollment(...args)),
-    bulkAssignGroupStudentsToSubject: (...args) =>
-      runWithProgress(() => bulkAssignGroupStudentsToSubject(...args)),
-    getEnrollmentRows,
-    updateScheduleDay: (...args) => runSaveWithProgress(() => updateScheduleDay(...args)),
-    updateScheduleSettings: (...args) => runSaveWithProgress(() => updateScheduleSettings(...args)),
-    createEmptyUnit: (...args) => runWithProgress(() => createEmptyUnit(...args)),
-    updateUnit: (...args) => runSaveWithProgress(() => updateUnit(...args)),
-    deleteUnit: (...args) => runWithProgress(() => deleteUnit(...args)),
-    createEmptyTask: () => runWithProgress(() => createEmptyTask()),
-    updateTask: (...args) => runSaveWithProgress(() => updateTask(...args)),
-    deleteTask: (...args) => runWithProgress(() => deleteTask(...args)),
-    addTaskSubjectLink: (...args) => runWithProgress(() => addTaskSubjectLink(...args)),
-    updateTaskSubjectLink: (...args) => runSaveWithProgress(() => updateTaskSubjectLink(...args))
+  // Mutation implementations close over the latest render's state. Exposing them through
+  // a ref keeps the public callbacks stable, so the context value only changes with data.
+  const implementations = {
+    createCourse,
+    createEmptyCourse,
+    updateCourse,
+    deleteCourse,
+    createEmptyStudent,
+    updateStudent,
+    addStudentToCourse,
+    deleteStudent,
+    createEmptySubject,
+    updateSubject,
+    deleteSubject,
+    setStudentEnrollment,
+    bulkAssignGroupStudentsToSubject,
+    updateScheduleDay,
+    updateScheduleSettings,
+    createEmptyUnit,
+    updateUnit,
+    deleteUnit,
+    createEmptyTask,
+    updateTask,
+    deleteTask,
+    addTaskSubjectLink,
+    updateTaskSubjectLink
   };
+  const implementationsRef = useRef(implementations);
+  useLayoutEffect(() => {
+    implementationsRef.current = implementations;
+  });
+
+  const actions = useMemo<ManagementActions>(
+    () => ({
+      refreshAll: () => runWithProgress(loadAll),
+      createCourse: (...args) => runWithProgress(() => implementationsRef.current.createCourse(...args)),
+      createEmptyCourse: (...args) => runWithProgress(() => implementationsRef.current.createEmptyCourse(...args)),
+      updateCourse: (...args) => runSaveWithProgress(() => implementationsRef.current.updateCourse(...args)),
+      deleteCourse: (...args) => runWithProgress(() => implementationsRef.current.deleteCourse(...args)),
+      createEmptyStudent: (...args) => runWithProgress(() => implementationsRef.current.createEmptyStudent(...args)),
+      updateStudent: (...args) => runSaveWithProgress(() => implementationsRef.current.updateStudent(...args)),
+      addStudentToCourse: (...args) => runWithProgress(() => implementationsRef.current.addStudentToCourse(...args)),
+      deleteStudent: (...args) => runWithProgress(() => implementationsRef.current.deleteStudent(...args)),
+      createEmptySubject: (...args) => runWithProgress(() => implementationsRef.current.createEmptySubject(...args)),
+      updateSubject: (...args) => runSaveWithProgress(() => implementationsRef.current.updateSubject(...args)),
+      deleteSubject: (...args) => runWithProgress(() => implementationsRef.current.deleteSubject(...args)),
+      setStudentEnrollment: (...args) => runWithProgress(() => implementationsRef.current.setStudentEnrollment(...args)),
+      bulkAssignGroupStudentsToSubject: (...args) => runWithProgress(() => implementationsRef.current.bulkAssignGroupStudentsToSubject(...args)),
+      updateScheduleDay: (...args) => runSaveWithProgress(() => implementationsRef.current.updateScheduleDay(...args)),
+      updateScheduleSettings: (...args) => runSaveWithProgress(() => implementationsRef.current.updateScheduleSettings(...args)),
+      createEmptyUnit: (...args) => runWithProgress(() => implementationsRef.current.createEmptyUnit(...args)),
+      updateUnit: (...args) => runSaveWithProgress(() => implementationsRef.current.updateUnit(...args)),
+      deleteUnit: (...args) => runWithProgress(() => implementationsRef.current.deleteUnit(...args)),
+      createEmptyTask: (...args) => runWithProgress(() => implementationsRef.current.createEmptyTask(...args)),
+      updateTask: (...args) => runSaveWithProgress(() => implementationsRef.current.updateTask(...args)),
+      deleteTask: (...args) => runWithProgress(() => implementationsRef.current.deleteTask(...args)),
+      addTaskSubjectLink: (...args) => runWithProgress(() => implementationsRef.current.addTaskSubjectLink(...args)),
+      updateTaskSubjectLink: (...args) => runSaveWithProgress(() => implementationsRef.current.updateTaskSubjectLink(...args))
+    }),
+    [loadAll, runSaveWithProgress, runWithProgress]
+  );
+
+  const value = useMemo<ManagementContextValue>(
+    () => ({
+      courses,
+      students,
+      subjects,
+      units,
+      scheduleDays,
+      scheduleSettings,
+      subjectCourseLinks,
+      taskSubjectLinks,
+      allTasks,
+      notice,
+      isBusy,
+      isReady,
+      setNotice,
+      getEnrollmentRows,
+      ...actions
+    }),
+    [
+      actions,
+      allTasks,
+      courses,
+      getEnrollmentRows,
+      isBusy,
+      isReady,
+      notice,
+      scheduleDays,
+      scheduleSettings,
+      students,
+      subjectCourseLinks,
+      subjects,
+      taskSubjectLinks,
+      units
+    ]
+  );
 
   return <ManagementContext.Provider value={value}>{children}</ManagementContext.Provider>;
 }
