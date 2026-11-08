@@ -1,6 +1,6 @@
 import type { SavedAiReport } from "./aiReportArchive";
 
-export const REPORT_REVIEW_NOTICE = "Informe elaborado con asistencia de IA. Requiere revisión docente.";
+const REPORT_REVIEW_NOTICE = "Informe elaborado con asistencia de IA. Requiere revisión docente.";
 
 export function reportParagraphs(report: SavedAiReport): string[] {
   return [report.title, ...report.context.split(/\r?\n/), `${report.provider} · ${report.model} · ${new Date(report.createdAt).toLocaleString("es-ES")}`, REPORT_REVIEW_NOTICE, "", ...report.text.split(/\r?\n/)];

@@ -25,6 +25,7 @@ import type {
 } from "../../shared/db/types";
 import { toLocalIsoDate } from "../../shared/utils/date";
 import { trackAnalyticsEvent } from "../../shared/analytics/analytics";
+import { downloadBlob } from "../../shared/utils/download";
 
 type AgendaData = {
   classGroups: ClassGroup[];
@@ -79,17 +80,7 @@ function formatAgendaDate(date: string): string {
 
 function downloadCalendar(items: AgendaItem[], today: string): void {
   const blob = new Blob([buildAgendaIcs(items)], { type: "text/calendar;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  try {
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `edunoza-agenda-${today}.ics`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  downloadBlob(`edunoza-agenda-${today}.ics`, blob);
 }
 
 export function AgendaPage() {

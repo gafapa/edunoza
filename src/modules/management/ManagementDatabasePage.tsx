@@ -21,6 +21,7 @@ import {
   restoreDatabasePayload, validateDatabasePayload, DATABASE_SCHEMA_VERSION,
   MAX_IMPORT_FILE_BYTES, type DatabaseExportPayload
 } from "../../shared/backup/database";
+import { downloadBlob } from "../../shared/utils/download";
 
 // Retain existing test and browser fixture imports while callers migrate to the shared service.
 export { buildCurrentPayload, restoreDatabasePayload, validateDatabasePayload, DATABASE_SCHEMA_VERSION } from "../../shared/backup/database";
@@ -65,19 +66,9 @@ export function ManagementDatabasePage() {
 
   const downloadPayload = (payload: unknown, label = "backup"): void => {
     const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-    const downloadUrl = URL.createObjectURL(blob);
-    try {
-      const link = document.createElement("a");
-      link.href = downloadUrl;
-      link.download = buildBackupFileName(label);
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      recordBackupCreated();
-      trackAnalyticsEvent("backup_exported");
-    } finally {
-      URL.revokeObjectURL(downloadUrl);
-    }
+    downloadBlob(buildBackupFileName(label), blob);
+    recordBackupCreated();
+    trackAnalyticsEvent("backup_exported");
   };
 
   const downloadSafetyBackup = async (label: string): Promise<DatabaseExportPayload> => {

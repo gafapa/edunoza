@@ -16,13 +16,6 @@ export function splitFullName(fullName: string): { firstName: string; lastName: 
   };
 }
 
-export function getStudentFullName(student: Student): string {
-  const composed = `${student.firstName} ${student.lastName}`.trim();
-  if (composed) {
-    return composed;
-  }
-  return student.fullName;
-}
 
 /**
  * Base comparator by last name, then first name.

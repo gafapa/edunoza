@@ -1,7 +1,7 @@
 import type { SavedAiReport } from "./aiReportArchive";
 
 export type ReportDocumentFormat = "docx" | "odt" | "pdf";
-export { REPORT_REVIEW_NOTICE, reportParagraphs } from "./reportDocumentContent";
+export { reportParagraphs } from "./reportDocumentContent";
 import { reportParagraphs, validateReport } from "./reportDocumentContent";
 export { createPdf, wrapReportLine } from "./pdfReport";
 import { exportPdfInWorker } from "./pdfExport";

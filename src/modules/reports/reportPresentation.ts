@@ -1,6 +1,7 @@
 import type { Assessment, AttendanceEntry } from "../../shared/db/types";
 import { buildCsv } from "../../shared/export/csv";
 import { toLocalIsoDate } from "../../shared/utils/date";
+import { downloadBlob } from "../../shared/utils/download";
 
 export type ReportTaskRow = {
   taskId: string;
@@ -65,20 +66,6 @@ export const REPORT_INTENTS: Array<{ id: ReportIntent; label: string; descriptio
   { id: "attendance", label: "Asistencia", description: "Presencia, retrasos y posibles patrones" },
   { id: "data", label: "Datos", description: "Detalle, análisis y tratamiento externo" }
 ];
-
-export function downloadBlob(filename: string, blob: Blob): void {
-  const url = URL.createObjectURL(blob);
-  try {
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  } finally {
-    URL.revokeObjectURL(url);
-  }
-}
 
 export function downloadCsv(filename: string, rows: string[][]): void {
   const content = buildCsv(rows);

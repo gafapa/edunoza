@@ -967,14 +967,6 @@ export async function listAiModelDetails(input: {
   return normalizeAiModelCatalog(input.provider, payload);
 }
 
-export async function listAiModels(input: {
-  provider: AiProviderId;
-  baseUrl?: string;
-  apiKey?: string;
-}): Promise<string[]> {
-  return (await listAiModelDetails(input)).map((model) => model.id);
-}
-
 export function getAiErrorMessage(error: unknown): string {
   if (!(error instanceof AiRuntimeError)) {
     return "No se pudo completar la operación de IA. Revisa la configuración y vuelve a intentarlo.";

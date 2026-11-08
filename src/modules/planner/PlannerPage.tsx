@@ -30,6 +30,7 @@ import { buildPrintablePlannerReport, type PrintablePlannerSession } from "../..
 import { canQuickAssignTask, completesTaskWithNextSession, countsAsPlannedSession } from "../../shared/planner/quickAssignment";
 import { availableRescheduleBlocks } from "../../shared/planner/reschedule";
 import { buildPrintableReportHtml } from "../../shared/reports/printableReports";
+import { downloadBlob } from "../../shared/utils/download";
 
 type PlannerCell = {
   key: string;
@@ -75,17 +76,7 @@ function formatBlockTime(block: ScheduleBlock): string {
 
 function downloadHtml(filename: string, html: string): void {
   const blob = new Blob(["\uFEFF" + html], { type: "text/html;charset=utf-8;" });
-  const url = URL.createObjectURL(blob);
-  try {
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = filename;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  downloadBlob(filename, blob);
 }
 
 function sessionDataTotal(counts: SessionDataCounts): number {

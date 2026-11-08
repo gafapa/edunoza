@@ -1,3 +1,4 @@
+import { toLocalIsoDate as toIsoDate } from "../utils/date";
 import type { WeekStartsOn } from "../../app/store";
 import type { ScheduleDay } from "../db/types";
 
@@ -10,14 +11,9 @@ export type PlannerWeekDate = {
   label: string;
 };
 
-export function toIsoDate(value: Date): string {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+export { toIsoDate };
 
-export function fromIsoDate(value: string): Date {
+function fromIsoDate(value: string): Date {
   const [year, month, day] = value.split("-").map((item) => Number(item));
   return new Date(year, month - 1, day);
 }

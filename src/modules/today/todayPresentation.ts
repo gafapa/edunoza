@@ -1,3 +1,4 @@
+import { toLocalIsoDate as toIsoDate } from "../../shared/utils/date";
 import type { AttendanceEntry, TaskSession } from "../../shared/db/types";
 import type { TodaySlot } from "./todaySlots";
 
@@ -20,7 +21,7 @@ export const SESSION_STATUS_LABELS: Record<NonNullable<TaskSession["status"]>, s
   cancelled: "Cancelada"
 };
 
-export const DATE_LABEL_FORMATTER = new Intl.DateTimeFormat("es-ES", {
+const DATE_LABEL_FORMATTER = new Intl.DateTimeFormat("es-ES", {
   weekday: "long",
   day: "numeric",
   month: "long"
@@ -35,12 +36,7 @@ export type ExceptionalSessionDraft = {
   title: string;
 };
 
-export function toIsoDate(value: Date): string {
-  const year = value.getFullYear();
-  const month = String(value.getMonth() + 1).padStart(2, "0");
-  const day = String(value.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
+export { toIsoDate };
 
 export function shiftIsoDate(value: string, deltaDays: number): string {
   const date = new Date(`${value}T12:00:00`);
@@ -52,7 +48,7 @@ export function formatDateLabel(value: string): string {
   return DATE_LABEL_FORMATTER.format(new Date(`${value}T12:00:00`));
 }
 
-export function toMinutes(value: string): number {
+function toMinutes(value: string): number {
   const [hourRaw, minuteRaw] = value.split(":");
   const hour = Number(hourRaw);
   const minute = Number(minuteRaw);

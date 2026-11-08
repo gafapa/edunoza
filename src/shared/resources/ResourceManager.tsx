@@ -10,6 +10,7 @@ import {
   formatFileSize
 } from "./resources";
 import { getTotalResourceBytes, saveResourceAttachment } from "./storage";
+import { downloadBlob } from "../utils/download";
 
 const ACCEPTED_FILE_TYPES = [
   ".pdf", ".doc", ".docx", ".xls", ".xlsx", ".ppt", ".pptx",
@@ -31,12 +32,7 @@ function sortResources(rows: ResourceAttachment[]): ResourceAttachment[] {
 function downloadFile(resource: ResourceAttachment): void {
   if (!resource.dataBase64 || !resource.mimeType || !resource.fileName) return;
   const blob = new Blob([base64ToBytes(resource.dataBase64)], { type: resource.mimeType });
-  const downloadUrl = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = downloadUrl;
-  anchor.download = resource.fileName;
-  anchor.click();
-  URL.revokeObjectURL(downloadUrl);
+  downloadBlob(resource.fileName, blob);
 }
 
 export function ResourceManager({ ownerType, ownerId, heading = "Recursos y evidencias" }: ResourceManagerProps) {

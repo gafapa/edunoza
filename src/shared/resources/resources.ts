@@ -31,7 +31,7 @@ const ALLOWED_MIME_TYPES = new Set([
   "video/webm"
 ]);
 
-export function normalizeResourceTitle(value: string): string {
+function normalizeResourceTitle(value: string): string {
   const title = value.trim();
   if (title.length < 2 || title.length > MAX_RESOURCE_TITLE_LENGTH) {
     throw new Error(`El título debe tener entre 2 y ${MAX_RESOURCE_TITLE_LENGTH} caracteres.`);

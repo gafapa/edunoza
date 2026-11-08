@@ -5,14 +5,11 @@ import { type SavedAiReport, printableAiReport } from "../../shared/reports/aiRe
 import { Modal } from "../../shared/ui/Modal";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
 import type { ReportDocumentFormat } from "../../shared/reports/reportDocuments";
+import { downloadBlob } from "../../shared/utils/download";
 
 function download(report: SavedAiReport, html: boolean) {
-  const url = URL.createObjectURL(new Blob([html ? printableAiReport(report) : `${report.title}\n${report.context}\n\n${report.text}`], { type: html ? "text/html;charset=utf-8" : "text/plain;charset=utf-8" }));
-  const link = document.createElement("a");
-  link.href = url;
-  link.download = `edunoza-informe-${report.createdAt.slice(0, 10)}.${html ? "html" : "txt"}`;
-  link.click();
-  window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  downloadBlob(`edunoza-informe-${report.createdAt.slice(0, 10)}.${html ? "html" : "txt"}`,
+    new Blob([html ? printableAiReport(report) : `${report.title}\n${report.context}\n\n${report.text}`], { type: html ? "text/html;charset=utf-8" : "text/plain;charset=utf-8" }));
 }
 
 export function AiReportWorkspace({ generated, classId }: { generated: SavedAiReport | null; classId: string | null }) {
@@ -62,14 +59,7 @@ export function AiReportWorkspace({ generated, classId }: { generated: SavedAiRe
       const { createReportDocument } = await import("../../shared/reports/reportDocuments");
       const blob = await createReportDocument(editor, format, controller.signal);
       if (!mounted.current) return;
-      const url = URL.createObjectURL(blob);
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `edunoza-informe-${editor.createdAt.slice(0, 10)}.${format}`;
-      document.body.appendChild(link);
-      link.click();
-      link.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      downloadBlob(`edunoza-informe-${editor.createdAt.slice(0, 10)}.${format}`, blob);
       setStatus(`Descarga ${format.toUpperCase()} preparada con el texto actual. No se ha guardado una nueva versión.`);
     } catch (error) {
       if (mounted.current) setStatus(error instanceof Error ? `No se pudo exportar: ${error.message}` : "No se pudo exportar. Inténtalo de nuevo; el texto se conserva.");

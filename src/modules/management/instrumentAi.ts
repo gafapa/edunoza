@@ -47,7 +47,7 @@ function scoreValue(value: unknown): number | null {
   return Number(Math.max(0, Math.min(10, score)).toFixed(2));
 }
 
-export function extractFirstBalancedJSONObject(text: string): string | null {
+function extractFirstBalancedJSONObject(text: string): string | null {
   for (let start = 0; start < text.length; start += 1) {
     if (text[start] !== "{") continue;
     let depth = 0;

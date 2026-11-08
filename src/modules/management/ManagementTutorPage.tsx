@@ -34,6 +34,7 @@ import { useManagement } from "./ManagementContext";
 import { useUnsavedChangesGuard } from "../../shared/hooks/useUnsavedChangesGuard";
 import { useRecoverableDraft } from "../../shared/hooks/useRecoverableDraft";
 import { DraftRecoveryNotice } from "../../shared/ui/DraftRecoveryNotice";
+import { downloadBlob } from "../../shared/utils/download";
 
 type TutorView = "followUps" | "contacts" | "groups" | "handoff";
 
@@ -149,17 +150,7 @@ function defaultGroupDraft(): GroupDraft {
 
 function downloadJson(payload: unknown, label: string): void {
   const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  try {
-    const link = document.createElement("a");
-    link.href = url;
-    link.download = `edunoza-${label}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  downloadBlob(`edunoza-${label}-${new Date().toISOString().replace(/[:.]/g, "-")}.json`, blob);
 }
 
 export function ManagementTutorPage() {
