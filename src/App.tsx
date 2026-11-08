@@ -9,7 +9,6 @@ import { TopTabs } from "./shared/ui/TopTabs";
 import { ConnectionStatus } from "./shared/ui/ConnectionStatus";
 import { AppLockButton, AppLockGate } from "./shared/ui/AppLockGate";
 import { PreferenceStorageNotice } from "./shared/ui/PreferenceStorageNotice";
-import packageJson from "../package.json";
 import { LandingPage } from "./modules/landing/LandingPage";
 import { LEGAL_PATHS, LegalPage } from "./modules/legal/LegalPage";
 import {
@@ -295,7 +294,7 @@ function WorkspaceApp() {
         <AppLockButton />
         <NavLink className="status-bar-legal-link" to="/legal" aria-label="Información legal y privacidad">Legal</NavLink>
         <span className="status-bar-brand">Edunoza</span>
-        <span className="status-bar-version">v{packageJson.version}</span>
+        <span className="status-bar-version">v{import.meta.env.VITE_APP_VERSION}</span>
       </footer>
     </div>
     </AppLockGate>

@@ -107,6 +107,9 @@ function contentSecurityPolicyPlugin(isDevelopment: boolean): Plugin {
   };
 }
 
+// Expose only the version to the app instead of bundling the whole package.json.
+process.env.VITE_APP_VERSION ??= JSON.parse(await readFile(new URL("./package.json", import.meta.url), "utf8")).version;
+
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, ".", "");
   const base = normalizeBasePath(env.VITE_BASE_PATH);

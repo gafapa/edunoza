@@ -1,6 +1,5 @@
 import { useMemo, useState } from "react";
 import { useLocation } from "react-router-dom";
-import packageJson from "../../../package.json";
 import { trackAnalyticsEvent } from "../analytics/analytics";
 import { Modal } from "../ui/Modal";
 
@@ -47,7 +46,7 @@ export function ProductFeedback({ placement = "floating" }: { placement?: Produc
       lines.push(
         "",
         "Contexto técnico sin datos académicos:",
-        `- Versión: ${packageJson.version}`,
+        `- Versión: ${import.meta.env.VITE_APP_VERSION}`,
         `- Sección: ${safeWorkspaceArea(location.pathname)}`,
         `- Conexión: ${navigator.onLine ? "en línea" : "sin conexión"}`
       );
