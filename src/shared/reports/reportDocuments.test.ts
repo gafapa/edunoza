@@ -54,7 +54,7 @@ describe("native report documents", () => {
   });
 
   it("creates a multipage PDF with embedded font and correct metadata", async () => {
-    const font = new Uint8Array(await readFile("public/fonts/NotoSans-Regular.ttf"));
+    const font = new Uint8Array(await readFile("src/shared/reports/fonts/NotoSans-Regular.ttf"));
     const blob = await createPdf({ ...report, text: report.text.repeat(40) }, font);
     const bytes = new Uint8Array(await blob.arrayBuffer());
     expect(strFromU8(bytes.slice(0, 5))).toBe("%PDF-");

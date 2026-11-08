@@ -27,7 +27,7 @@ Automated checks use fictional data and simulated provider responses. They test 
 
 ## Native export implementation and QA
 
-The native-format extension uses [docx](https://docx.js.org/api/classes/Packer.html) for browser-side OOXML packaging, [fflate](https://github.com/101arrowz/fflate) for the ODT ZIP, and [pdf-lib](https://pdf-lib.js.org/) with fontkit for PDF layout and embedding. The Noto Sans font is distributed with its [SIL Open Font License](https://github.com/notofonts/noto-fonts/blob/main/LICENSE) in `public/fonts/NotoSans-LICENSE.txt`.
+The native-format extension uses [docx](https://docx.js.org/api/classes/Packer.html) for browser-side OOXML packaging, [fflate](https://github.com/101arrowz/fflate) for the ODT ZIP, and [pdf-lib](https://pdf-lib.js.org/) with fontkit for PDF layout and embedding. The Noto Sans font is distributed with its [SIL Open Font License](https://github.com/notofonts/noto-fonts/blob/main/LICENSE) in `public/fonts/NotoSans-LICENSE.txt`; the font file itself lives in `src/shared/reports/fonts/` so Vite gives it a content hash.
 
 Tests verify editable accented text, XML escaping, package signatures, the uncompressed first ODT mimetype entry, A4 layout, multi-page PDF generation, long-word wrapping, invalid input and font-download failures. Browser coverage verifies all three actual downloads contain edited text and make no external HTTP requests; downloads do not create an archive version. Fictional Word/ODT packages were parsed as XML, and all pages of the two-page PDF fixture were rendered and visually inspected. This is not a native Microsoft Word or LibreOffice visual compatibility certification.
 

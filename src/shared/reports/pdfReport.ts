@@ -1,3 +1,5 @@
+// Imported through Vite so the font gets a content hash and survives service worker updates.
+import notoSansUrl from "./fonts/NotoSans-Regular.ttf?url";
 import type { SavedAiReport } from "./aiReportArchive";
 import { reportParagraphs, validateReport } from "./reportDocumentContent";
 
@@ -23,7 +25,7 @@ export async function createPdf(report: SavedAiReport, fontBytes?: Uint8Array): 
   validateReport(report);
   const [{ PDFDocument, PageSizes, rgb }, { default: fontkit }] = await Promise.all([import("pdf-lib"), import("@pdf-lib/fontkit")]);
   if (!fontBytes) {
-    const response = await fetch(`${import.meta.env.BASE_URL}fonts/NotoSans-Regular.ttf`);
+    const response = await fetch(notoSansUrl);
     if (!response.ok) throw new Error("No se pudo cargar la fuente del PDF. Comprueba la conexión e inténtalo de nuevo.");
     fontBytes = new Uint8Array(await response.arrayBuffer());
   }
