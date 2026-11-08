@@ -199,7 +199,7 @@ describe("database payload validation", () => {
 
   it("defines only the current clean database tables", () => {
     expect(db.name).toBe("profeplus-db");
-    expect(db.verno).toBe(10);
+    expect(db.verno).toBe(11);
     expect(db.tables.map((table) => table.name).sort()).toEqual([
       "academicPeriods",
       "aiReports",

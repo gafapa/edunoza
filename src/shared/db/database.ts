@@ -278,6 +278,19 @@ export class EdunozaDB extends Dexie {
     this.version(10).stores({
       resourceAttachments: "id,ownerType,ownerId,kind,createdAt,[ownerType+ownerId],[kind+sizeBytes]"
     });
+    // IndexedDB cannot use booleans as keys, so the boolean indexes declared in earlier
+    // versions were always empty. Drop them; filter boolean fields in JS instead.
+    // Index-only change: row shapes and the backup schemaVersion are unaffected.
+    this.version(11).stores({
+      tasks: "id",
+      taskGradebookConfigs:
+        "id,taskId,subjectId,classId,academicPeriodId,gradebookWeight,groupId,rubricTemplateId,checklistTemplateId,[classId+subjectId],[classId+academicPeriodId],[taskId+subjectId+classId],[taskId+classId]",
+      taskChecklistAssessments:
+        "id,taskId,subjectId,classId,date,scheduleSlotId,studentId,checklistTemplateId,itemId,[taskId+date],[taskId+date+scheduleSlotId],[taskId+date+studentId],[taskId+date+scheduleSlotId+studentId],[taskId+date+scheduleSlotId+studentId+itemId],[taskId+classId+subjectId+date+scheduleSlotId]",
+      scheduleDays: "id,dayOfWeek",
+      studentFollowUps:
+        "id,studentId,classId,date,kind,status,dueDate,priority,responsiblePerson,[studentId+date],[classId+date],[status+dueDate]"
+    });
   }
 }
 
