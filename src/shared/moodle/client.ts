@@ -23,14 +23,18 @@ const FUNCTIONS = {
   siteInfo: "core_webservice_get_site_info",
   courses: "core_enrol_get_users_courses",
   users: "core_enrol_get_enrolled_users",
-  courseGroups: "core_group_get_course_groups",
-  groupMembers: "core_group_get_group_members",
   contents: "core_course_get_contents",
   assignments: "mod_assign_get_assignments",
   grades: "mod_assign_get_grades",
   submissions: "mod_assign_get_submissions",
-  gradingDefinitions: "core_grading_get_definitions"
+  gradingDefinitions: "core_grading_get_definitions",
+  // Course gradebook: grades of every graded activity (quizzes, forums, workshops...). It ships
+  // in the standard moodle_mobile_app service, so it needs no extra Moodle plugin.
+  gradebook: "gradereport_user_get_grade_items"
 } as const;
+
+/** Core modules whose grade can come from an advanced grading form (rubric, guide...). */
+const ADVANCED_GRADING_MODULES = new Set(["assign", "forum"]);
 
 const READ_ONLY_FUNCTIONS = new Set<string>(Object.values(FUNCTIONS));
 
@@ -195,12 +199,6 @@ function warningsFromEnvelope(envelope: RecordValue, functionName: string): stri
   if (!("warnings" in envelope)) invalidResponse(functionName);
   const warnings = warningDetails(envelope.warnings, functionName);
   return warnings.map((warning) => warningText(functionName, warning));
-}
-
-function stableUniqueIntegers(values: unknown, functionName: string): number[] {
-  const result = asArray(values, functionName).map((value) => asInteger(value, functionName, 1));
-  if (new Set(result).size !== result.length) invalidResponse(functionName);
-  return result;
 }
 
 function ensureCourse(course: MoodleCourse): void {
@@ -376,9 +374,12 @@ export function createMoodleClient(
     });
   };
 
-  const getRoster = async (courseId: number): Promise<MoodleUser[]> => {
+  // Group membership comes from the roster's own `groups` field: core_group_get_group_members
+  // is not in the mobile service and both group functions require moodle/course:managegroups.
+  const getRoster = async (courseId: number): Promise<{ students: MoodleUser[]; groups: MoodleGroup[] }> => {
     const students: MoodleUser[] = [];
     const seen = new Set<number>();
+    const groups = new Map<number, MoodleGroup>();
     for (let offset = 0; ; offset += ROSTER_PAGE_SIZE) {
       if (offset >= MAX_ROSTER_USERS) {
         throw new Error(`La matrícula de Moodle supera el límite seguro de ${MAX_ROSTER_USERS} personas; no se usará una lista parcial.`);
@@ -406,10 +407,17 @@ export function createMoodleClient(
         const fullName = asString(record.fullname, FUNCTIONS.users);
         const email = typeof record.email === "string" && record.email.trim() ? record.email : undefined;
         students.push({ id, firstName, lastName, fullName, ...(email ? { email } : {}) });
+        for (const groupValue of record.groups === undefined ? [] : asArray(record.groups, FUNCTIONS.users)) {
+          const groupRecord = asRecord(groupValue, FUNCTIONS.users);
+          const groupId = asInteger(groupRecord.id, FUNCTIONS.users, 1);
+          const group = groups.get(groupId) ?? { id: groupId, courseId, name: asString(groupRecord.name, FUNCTIONS.users), memberIds: [] };
+          if (!group.memberIds.includes(id)) group.memberIds.push(id);
+          groups.set(groupId, group);
+        }
       }
       if (page.length < ROSTER_PAGE_SIZE) break;
     }
-    return students;
+    return { students, groups: [...groups.values()].sort((a, b) => a.id - b.id) };
   };
 
   const getCourseModules = async (courseId: number): Promise<Map<number, CourseModuleWire>> => {
@@ -472,28 +480,54 @@ export function createMoodleClient(
     return { assignments, warnings };
   };
 
-  const getGroups = async (courseId: number): Promise<MoodleGroup[]> => {
-    const groupValues = asArray(await call(FUNCTIONS.courseGroups, { courseid: courseId }), FUNCTIONS.courseGroups);
-    const groups = groupValues.map((entry) => {
-      const record = asRecord(entry, FUNCTIONS.courseGroups);
-      const id = asInteger(record.id, FUNCTIONS.courseGroups, 1);
-      const returnedCourse = asInteger(record.courseid, FUNCTIONS.courseGroups, 1);
-      if (returnedCourse !== courseId) invalidResponse(FUNCTIONS.courseGroups);
-      return { id, courseId, name: asString(record.name, FUNCTIONS.courseGroups) };
-    });
-    const ids = groups.map((group) => group.id);
-    if (new Set(ids).size !== ids.length) invalidResponse(FUNCTIONS.courseGroups);
-    if (ids.length === 0) return [];
-    const memberValues = asArray(await call(FUNCTIONS.groupMembers, { groupids: ids }), FUNCTIONS.groupMembers);
-    const members = new Map<number, number[]>();
-    for (const entry of memberValues) {
-      const record = asRecord(entry, FUNCTIONS.groupMembers);
-      const groupId = asInteger(record.groupid, FUNCTIONS.groupMembers, 1);
-      if (!ids.includes(groupId) || members.has(groupId)) invalidResponse(FUNCTIONS.groupMembers);
-      members.set(groupId, stableUniqueIntegers(record.userids, FUNCTIONS.groupMembers));
+  /**
+   * Reads activity grades from the course gradebook (all users at once). Only numeric items
+   * with a 0 minimum are kept, because the local conversion is a plain grade / max ratio.
+   */
+  const readGradebook = async (courseId: number, modules: Map<number, CourseModuleWire>):
+    Promise<{ grades: MoodleGrade[]; maxByCmid: Map<number, number>; warnings: string[] }> => {
+    const envelope = asRecord(await call(FUNCTIONS.gradebook, { courseid: courseId, userid: 0, groupid: 0 }), FUNCTIONS.gradebook);
+    const warnings = warningsFromEnvelope(envelope, FUNCTIONS.gradebook);
+    const grades: MoodleGrade[] = [];
+    const maxByCmid = new Map<number, number>();
+    const unsupported = new Set<number>();
+    const seen = new Set<string>();
+    for (const userValue of asArray(envelope.usergrades, FUNCTIONS.gradebook)) {
+      const user = asRecord(userValue, FUNCTIONS.gradebook);
+      if (asInteger(user.courseid, FUNCTIONS.gradebook, 1) !== courseId) invalidResponse(FUNCTIONS.gradebook);
+      const userId = asInteger(user.userid, FUNCTIONS.gradebook, 1);
+      for (const itemValue of asArray(user.gradeitems, FUNCTIONS.gradebook)) {
+        const item = asRecord(itemValue, FUNCTIONS.gradebook);
+        // Totals, categories and manual items have no course module to link to; itemnumber > 0
+        // are secondary grades (e.g. a workshop's assessment grade).
+        if (item.itemtype !== "mod" || item.itemnumber !== 0 || !Number.isSafeInteger(item.cmid)) continue;
+        const cmid = item.cmid as number;
+        if (!modules.has(cmid) || unsupported.has(cmid)) continue;
+        const key = `${cmid}:${userId}`;
+        if (seen.has(key)) invalidResponse(FUNCTIONS.gradebook);
+        seen.add(key);
+        const isScale = Number.isSafeInteger(item.scaleid) && (item.scaleid as number) > 0;
+        const max = item.grademax == null ? undefined : asNumber(item.grademax, FUNCTIONS.gradebook);
+        const min = item.grademin == null ? 0 : asNumber(item.grademin, FUNCTIONS.gradebook);
+        if (isScale || max === undefined || max <= 0 || min !== 0) {
+          unsupported.add(cmid);
+          continue;
+        }
+        maxByCmid.set(cmid, max);
+        if (item.graderaw == null) continue;
+        const grade = asNumber(item.graderaw, FUNCTIONS.gradebook);
+        const modifiedAt = Number.isSafeInteger(item.gradedategraded) ? item.gradedategraded as number
+          : Number.isSafeInteger(item.gradedatesubmitted) ? item.gradedatesubmitted as number : 0;
+        grades.push({ activityId: cmid, userId, grade: grade < 0 ? null : grade, modifiedAt,
+          ...(item.gradeislocked === true ? { locked: true } : {}),
+          ...(item.gradeisoverridden === true ? { overridden: true } : {}) });
+      }
     }
-    if (members.size !== ids.length) invalidResponse(FUNCTIONS.groupMembers);
-    return groups.map((group) => ({ ...group, memberIds: members.get(group.id)! }));
+    if (unsupported.size > 0) {
+      unsupported.forEach((cmid) => maxByCmid.delete(cmid));
+      warnings.push("Algunas actividades se califican con escalas o con un rango que no empieza en 0 (o el calificador oculta el rango); sus notas no se importarán.");
+    }
+    return { grades: grades.filter((grade) => !unsupported.has(grade.activityId)), maxByCmid, warnings };
   };
 
   const readGrades = async (assignmentIds: number[]): Promise<{ grades: MoodleGrade[]; warnings: string[] }> => {
@@ -620,14 +654,12 @@ export function createMoodleClient(
         throw new Error(`El servicio web de Moodle no permite ${functionName}; no se creará una instantánea parcial del curso.`);
       }
     }
+    const can = (name: MoodleFunction) => site.functions.includes(name);
     const warnings: string[] = [];
-    const supportsGroups = site.functions.includes(FUNCTIONS.courseGroups) && site.functions.includes(FUNCTIONS.groupMembers);
-    if (!supportsGroups) warnings.push("El servicio web de Moodle no permite leer grupos y miembros; no se mostrarán como una lista vacía confirmada.");
-    const [students, modules, assignmentResult, groups] = await Promise.all([
+    const [roster, modules, assignmentResult] = await Promise.all([
       getRoster(course.id),
       getCourseModules(course.id),
-      getAssignments(course.id),
-      supportsGroups ? getGroups(course.id) : Promise.resolve([])
+      getAssignments(course.id)
     ]);
     warnings.push(...assignmentResult.warnings);
     const assignmentModules = assignmentResult.assignments.map((assignment) => {
@@ -637,19 +669,55 @@ export function createMoodleClient(
       }
       return module;
     });
-    const grading = await getAdvancedGrading(assignmentModules);
+    const assignmentIds = assignmentResult.assignments.map((assignment) => assignment.id);
+    const assignmentCmid = new Map(assignmentResult.assignments.map((assignment) => [assignment.id, assignment.cmid]));
+    // These reads are independent: one round trip instead of four sequential ones.
+    const [grading, assignGrades, submissionResult, gradebook] = await Promise.all([
+      getAdvancedGrading(assignmentModules),
+      can(FUNCTIONS.grades) ? readGrades(assignmentIds) : undefined,
+      can(FUNCTIONS.submissions) ? readSubmissions(assignmentIds) : undefined,
+      // The gradebook is a complement: a permission error there must not discard the snapshot.
+      can(FUNCTIONS.gradebook) ? readGradebook(course.id, modules).catch((error: unknown) => {
+        ensureActive();
+        return { grades: [], maxByCmid: new Map<number, number>(),
+          warnings: [`No se pudo leer el calificador del curso (${error instanceof Error ? error.message : "error desconocido"}); solo se mostrarán notas de tareas.`] };
+      }) : undefined
+    ]);
     warnings.push(...grading.warnings);
+
+    // Assignment grades come from mod_assign when available (it knows attempts). Every other
+    // graded activity, and assignments on services without mod_assign_get_grades, use the gradebook.
+    const grades: MoodleGrade[] = assignGrades
+      ? assignGrades.grades.map((grade) => ({ ...grade, activityId: assignmentCmid.get(grade.activityId)! }))
+      : [];
+    if (assignGrades) warnings.push(...assignGrades.warnings);
+    if (gradebook) {
+      warnings.push(...gradebook.warnings);
+      grades.push(...gradebook.grades.filter((grade) => !assignGrades || modules.get(grade.activityId)?.module !== "assign"));
+    }
+    if (!assignGrades && !gradebook) {
+      warnings.push("El servicio web de Moodle no permite leer calificaciones; no se mostrarán como una lista vacía confirmada.");
+    }
+    const submissions: MoodleSubmission[] = submissionResult
+      ? submissionResult.submissions.map((submission) => ({ ...submission, activityId: assignmentCmid.get(submission.activityId)! }))
+      : [];
+    if (submissionResult) warnings.push(...submissionResult.warnings);
+    else warnings.push("El servicio web de Moodle no permite leer entregas; no se mostrarán como una lista vacía confirmada.");
+
     const assignmentsByCmid = new Map(assignmentResult.assignments.map((assignment) => [assignment.cmid, assignment]));
     const activities: MoodleActivity[] = [...modules.values()].map((module) => {
       const assignment = assignmentsByCmid.get(module.id);
       if (!assignment) {
+        const gradeMax = gradebook?.maxByCmid.get(module.id);
         return {
           id: module.id,
           courseId: course.id,
           instanceId: module.instanceId,
           module: module.module,
           title: module.name,
-          url: safeActivityUrl(module.url, baseUrl, module.module, module.id)
+          url: safeActivityUrl(module.url, baseUrl, module.module, module.id),
+          // Quizzes, lessons, H5P... have no rubric-style grading: their grade is a direct number.
+          ...(gradeMax ? { gradeMax, ...(ADVANCED_GRADING_MODULES.has(module.module) ? {} : { advancedGrading: false }) } : {})
         };
       }
       const advancedGrading = grading.byCmid.get(assignment.cmid);
@@ -666,29 +734,11 @@ export function createMoodleClient(
         teamSubmission: assignment.teamSubmission
       };
     });
-    const assignmentIds = assignmentResult.assignments.map((assignment) => assignment.id);
-    const assignmentCmid = new Map(assignmentResult.assignments.map((assignment) => [assignment.id, assignment.cmid]));
-    let grades: MoodleGrade[] = [];
-    let submissions: MoodleSubmission[] = [];
-    if (site.functions.includes(FUNCTIONS.grades)) {
-      const result = await readGrades(assignmentIds);
-      grades = result.grades.map((grade) => ({ ...grade, activityId: assignmentCmid.get(grade.activityId)! }));
-      warnings.push(...result.warnings);
-    } else {
-      warnings.push("El servicio web de Moodle no permite leer calificaciones; no se mostrarán como una lista vacía confirmada.");
-    }
-    if (site.functions.includes(FUNCTIONS.submissions)) {
-      const result = await readSubmissions(assignmentIds);
-      submissions = result.submissions.map((submission) => ({ ...submission, activityId: assignmentCmid.get(submission.activityId)! }));
-      warnings.push(...result.warnings);
-    } else {
-      warnings.push("El servicio web de Moodle no permite leer entregas; no se mostrarán como una lista vacía confirmada.");
-    }
     ensureActive();
     return {
       course,
-      groups,
-      students,
+      groups: roster.groups,
+      students: roster.students,
       activities,
       grades,
       submissions,

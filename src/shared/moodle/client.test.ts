@@ -16,13 +16,12 @@ const allFunctions = [
   "core_webservice_get_site_info",
   "core_enrol_get_users_courses",
   "core_enrol_get_enrolled_users",
-  "core_group_get_course_groups",
-  "core_group_get_group_members",
   "core_course_get_contents",
   "mod_assign_get_assignments",
   "mod_assign_get_grades",
   "mod_assign_get_submissions",
   "core_grading_get_definitions",
+  "gradereport_user_get_grade_items",
   // The account may expose writes, but this client must never call them.
   "mod_assign_save_grade"
 ];
@@ -59,11 +58,7 @@ function fixtureTransport(requests: ProxyRequest[] = []): ProxyTransport {
       case "core_enrol_get_users_courses":
         return response(request, [{ id: 5, fullname: "Mathematics", shortname: "MATH" }]);
       case "core_enrol_get_enrolled_users":
-        return response(request, [{ id: 11, firstname: "Ana", lastname: "Example", fullname: "Ana Example", email: "ana@example.test" }]);
-      case "core_group_get_course_groups":
-        return response(request, [{ id: 31, courseid: 5, name: "Group A", description: "", descriptionformat: 1, enrolmentkey: "" }]);
-      case "core_group_get_group_members":
-        return response(request, [{ groupid: 31, userids: [11] }]);
+        return response(request, [{ id: 11, firstname: "Ana", lastname: "Example", fullname: "Ana Example", email: "ana@example.test", groups: [{ id: 31, name: "Group A", description: "" }] }]);
       case "core_course_get_contents":
         return response(request, [{
           id: 1,
@@ -72,7 +67,9 @@ function fixtureTransport(requests: ProxyRequest[] = []): ProxyTransport {
           summaryformat: 1,
           modules: [
             { id: 501, instance: 91, contextid: 701, name: "Worksheet", modname: "assign", url: `${SERVER}mod/assign/view.php?id=501` },
-            { id: 502, instance: 12, contextid: 702, name: "Reference page", modname: "page", url: `${SERVER}mod/page/view.php?id=502` }
+            { id: 502, instance: 12, contextid: 702, name: "Reference page", modname: "page", url: `${SERVER}mod/page/view.php?id=502` },
+            { id: 505, instance: 13, contextid: 703, name: "Unit quiz", modname: "quiz", url: `${SERVER}mod/quiz/view.php?id=505` },
+            { id: 506, instance: 14, contextid: 704, name: "Scaled forum", modname: "forum", url: `${SERVER}mod/forum/view.php?id=506` }
           ]
         }]);
       case "mod_assign_get_assignments":
@@ -118,6 +115,15 @@ function fixtureTransport(requests: ProxyRequest[] = []): ProxyTransport {
       case "mod_assign_get_submissions":
         expect(params.get("assignmentids[0]")).toBe("91");
         return response(request, { assignments: [{ assignmentid: 91, submissions: [{ id: 2, userid: 11, attemptnumber: 0, timecreated: 8, timemodified: 9, status: "submitted", groupid: 0 }] }], warnings: [] });
+      case "gradereport_user_get_grade_items":
+        expect(params.get("userid")).toBe("0");
+        return response(request, { usergrades: [{ courseid: 5, userid: 11, userfullname: "Ana Example", maxdepth: 2, gradeitems: [
+          { id: 1, itemname: "Worksheet", itemtype: "mod", itemmodule: "assign", iteminstance: 91, itemnumber: 0, cmid: 501, scaleid: 0, graderaw: 15, grademin: 0, grademax: 20, gradedategraded: 30 },
+          { id: 2, itemname: "Unit quiz", itemtype: "mod", itemmodule: "quiz", iteminstance: 13, itemnumber: 0, cmid: 505, scaleid: 0, graderaw: 8.5, grademin: 0, grademax: 10, gradedategraded: 40 },
+          { id: 3, itemname: "Scaled forum", itemtype: "mod", itemmodule: "forum", iteminstance: 14, itemnumber: 0, cmid: 506, scaleid: 2, graderaw: 3, grademin: 1, grademax: 4 },
+          { id: 4, itemname: "Manual", itemtype: "manual", itemnumber: 0, scaleid: 0, graderaw: 9, grademin: 0, grademax: 10 },
+          { id: 5, itemname: null, itemtype: "course", itemnumber: 0, scaleid: 0, graderaw: 50, grademin: 0, grademax: 100 }
+        ] }], warnings: [] });
       default:
         throw new Error("Unexpected function");
     }
@@ -205,7 +211,7 @@ describe("Moodle read-only protocol adapter", () => {
       const body = JSON.parse(base.bodyText);
       switch (functionName(request)) {
         case "core_course_get_contents":
-          body[0].modules.push({ id: 503, instance: 92, name: "Restricted task", modname: "assign", url: `${SERVER}mod/assign/view.php?id=503` });
+          body[0].modules.push({ id: 503, instance: 92, name: "Restricted task", modname: "assign", url: `${SERVER}mod/assign/view.php?id=505` });
           break;
         case "mod_assign_get_assignments":
           body.courses[0].assignments.push({ ...body.courses[0].assignments[0], id: 92, cmid: 503, name: "Restricted task" });
@@ -273,9 +279,18 @@ describe("Moodle read-only protocol adapter", () => {
     expect(snapshot.groups).toEqual([{ id: 31, courseId: 5, name: "Group A", memberIds: [11] }]);
     expect(snapshot.activities).toEqual([
       expect.objectContaining({ id: 501, instanceId: 91, module: "assign", gradeMax: 20, advancedGrading: false }),
-      expect.objectContaining({ id: 502, instanceId: 12, module: "page", title: "Reference page" })
+      expect.objectContaining({ id: 502, instanceId: 12, module: "page", title: "Reference page" }),
+      expect.objectContaining({ id: 505, module: "quiz", gradeMax: 10, advancedGrading: false }),
+      expect.objectContaining({ id: 506, module: "forum" })
     ]);
-    expect(snapshot.grades).toEqual([expect.objectContaining({ activityId: 501, userId: 11, grade: 17.5 })]);
+    expect(snapshot.activities[1]).not.toHaveProperty("gradeMax");
+    expect(snapshot.activities[3]).not.toHaveProperty("gradeMax");
+    // Assignment grades still come from mod_assign; the gradebook adds the quiz; scales are skipped.
+    expect(snapshot.grades).toEqual([
+      expect.objectContaining({ activityId: 501, userId: 11, grade: 17.5 }),
+      expect.objectContaining({ activityId: 505, userId: 11, grade: 8.5, modifiedAt: 40 })
+    ]);
+    expect(snapshot.warnings.join(" ")).toContain("escalas");
     expect(snapshot.submissions).toEqual([expect.objectContaining({ activityId: 501, userId: 11, status: "submitted" })]);
 
     const rosterRequest = requests.find((request) => functionName(request) === "core_enrol_get_enrolled_users")!;
@@ -344,9 +359,40 @@ describe("Moodle read-only protocol adapter", () => {
     expect(snapshot.groups).toEqual([]);
     expect(snapshot.grades).toEqual([]);
     expect(snapshot.submissions).toEqual([]);
-    expect(snapshot.warnings.join(" ")).toMatch(/grupos y miembros/);
     expect(snapshot.warnings.join(" ")).toMatch(/calificaciones/);
     expect(snapshot.warnings.join(" ")).toMatch(/entregas/);
+  });
+
+  it("reads grades from the gradebook when the service lacks mod_assign_get_grades (plain mobile service)", async () => {
+    const base = fixtureTransport();
+    const requests: string[] = [];
+    const transport: ProxyTransport = async (request, signal) => {
+      requests.push(functionName(request));
+      if (functionName(request) === "core_webservice_get_site_info") {
+        return response(request, siteInfo(allFunctions.filter((name) => name !== "mod_assign_get_grades" && name !== "core_grading_get_definitions")));
+      }
+      return base(request, signal);
+    };
+    const snapshot = await createMoodleClient(SERVER, TOKEN, { transport })
+      .getCourseSnapshot({ id: 5, fullName: "Mathematics", shortName: "MATH" });
+    expect(requests).not.toContain("mod_assign_get_grades");
+    expect(snapshot.grades).toEqual([
+      expect.objectContaining({ activityId: 501, grade: 15 }),
+      expect.objectContaining({ activityId: 505, grade: 8.5 })
+    ]);
+    expect(snapshot.groups).toEqual([{ id: 31, courseId: 5, name: "Group A", memberIds: [11] }]);
+  });
+
+  it("keeps the snapshot when the gradebook rejects the request", async () => {
+    const base = fixtureTransport();
+    const transport: ProxyTransport = async (request, signal) => functionName(request) === "gradereport_user_get_grade_items"
+      ? response(request, { exception: "required_capability_exception", errorcode: "nopermissions", message: `x ${TOKEN}` })
+      : base(request, signal);
+    const snapshot = await createMoodleClient(SERVER, TOKEN, { transport })
+      .getCourseSnapshot({ id: 5, fullName: "Mathematics", shortName: "MATH" });
+    expect(snapshot.grades).toEqual([expect.objectContaining({ activityId: 501, grade: 17.5 })]);
+    expect(snapshot.warnings.join(" ")).toContain("nopermissions");
+    expect(snapshot.warnings.join(" ")).not.toContain(TOKEN);
   });
 
   it("surfaces Moodle warning envelopes without echoing remote messages", async () => {

@@ -698,7 +698,7 @@ export async function previewGrades(connectionId: string, snapshot: MoodleCourse
     const activity = activities.get(grade.activityId);
     const activityBinding = activityBindings.get(grade.activityId);
     const studentBinding = studentBindings.get(grade.userId);
-    if (!activity || activity.module !== "assign" || !activityBinding || !studentBinding) continue;
+    if (!activity || !activityBinding || !studentBinding) continue;
     const reason = activity.teamSubmission
       ? "Esta actividad es una entrega en grupo en Moodle; Edunoza no importa notas de entregas en grupo."
       : !activity.gradeMax || activity.gradeMax <= 0

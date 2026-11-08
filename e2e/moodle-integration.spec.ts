@@ -65,7 +65,7 @@ for (const width of [390, 1440]) {
     expect(wire.calls.length).toBeGreaterThan(5);
     for (const call of wire.calls) {
       expect(call.url).not.toContain(TOKEN);
-      expect(call.functionName).toMatch(/^(?:core_[a-z_]+_get_[a-z_]+|mod_assign_get_[a-z_]+)$/);
+      expect(call.functionName).toMatch(/^(?:core_[a-z_]+_get_[a-z_]+|mod_assign_get_[a-z_]+|gradereport_user_get_grade_items)$/);
       expect(call.body).not.toContain("PRIVATE");
       expect(call.body).not.toContain("moodle-local");
     }

@@ -58,7 +58,16 @@ Sources: [Moodle 4.5 service registration](https://github.com/moodle/moodle/blob
 
 ## Function families
 
-The adapter uses an explicit read-only allowlist. Site identity and accessible courses come from `core_webservice_get_site_info` and `core_enrol_get_users_courses`. Course information comes from enrolled-user, group and course-content functions. Assignment metadata, grades and submissions use `mod_assign_get_*` functions where permitted. Optional grading-definition metadata may be used to distinguish representations. No `save`, `update`, `create`, `delete`, or upload operation is exposed by the adapter.
+The adapter uses an explicit read-only allowlist. Site identity and accessible courses come from `core_webservice_get_site_info` and `core_enrol_get_users_courses`. Course information comes from enrolled-user and course-content functions. Moodle subgroups and their members are derived from the `groups` field of `core_enrol_get_enrolled_users`, because `core_group_get_group_members` is not in the standard mobile service and both group functions require `moodle/course:managegroups`. Assignment metadata, grades and submissions use `mod_assign_get_*` functions where permitted. Grades of every other graded activity (quizzes, lessons, H5P, forums, workshops) come from the course gradebook through `gradereport_user_get_grade_items`. Optional grading-definition metadata may be used to distinguish representations. No `save`, `update`, `create`, `delete`, or upload operation is exposed by the adapter.
+
+## Grades without extra Moodle plugins
+
+Edunoza needs no Moodle plugin (MoodlIA or otherwise). Every function it calls ships with Moodle core, and all grade sources are in the default `moodle_mobile_app` service used by username/password login:
+
+- `mod_assign_get_grades` for assignments (attempt-aware). When the service lacks it, assignment grades fall back to the gradebook.
+- `gradereport_user_get_grade_items`, called once per course with `userid=0` (requires `moodle/grade:viewall`, which teachers hold by default), for every other activity with a gradebook item. Only the activity's main item (`itemnumber` 0) is read; course/category totals and manual items have no course module to link and are ignored.
+
+Gradebook items graded with a scale, with a minimum other than 0, or without a visible range (the user report's *Show range* setting disabled) are not imported, and a warning says so. A gradebook permission error only adds a warning; the course snapshot and assignment grades remain usable. Activities other than assignments and forums cannot use advanced grading, so their numeric grade is offered as a direct grade; forum grades still require the individual numeric-result confirmation.
 
 ## Single-flow redesign and returning updates
 

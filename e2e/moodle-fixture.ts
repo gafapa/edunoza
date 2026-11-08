@@ -12,7 +12,7 @@ export async function installMoodleFixture(page: Page): Promise<void> {
       modifiedAt: 100,
       pending: false,
       failFunction: "",
-      functions: ["core_webservice_get_site_info", "core_enrol_get_users_courses", "core_enrol_get_enrolled_users", "core_group_get_course_groups", "core_group_get_group_members", "core_course_get_contents", "mod_assign_get_assignments", "mod_assign_get_grades", "mod_assign_get_submissions", "core_grading_get_definitions", "core_course_get_course_module"]
+      functions: ["core_webservice_get_site_info", "core_enrol_get_users_courses", "core_enrol_get_enrolled_users", "core_course_get_contents", "mod_assign_get_assignments", "mod_assign_get_grades", "mod_assign_get_submissions", "core_grading_get_definitions", "core_course_get_course_module", "gradereport_user_get_grade_items"]
     };
     Object.assign(window, { moodleFixture: fixture });
     window.addEventListener("message", (event) => {
@@ -35,17 +35,16 @@ export async function installMoodleFixture(page: Page): Promise<void> {
       else if (functionName === fixture.failFunction) result = { exception: "webservice_access_exception", errorcode: "accessexception", message: "Access denied" };
       else if (functionName === "core_webservice_get_site_info") result = { siteurl: server, sitename: "Synthetic Moodle", userid: fixture.userId, fullname: "Synthetic Teacher", functions: fixture.functions.map((name) => ({ name, version: "2024100700" })) };
       else if (functionName === "core_enrol_get_users_courses") result = [{ id: 4, fullname: "Synthetic course", shortname: "SYN-4" }];
-      else if (functionName === "core_group_get_course_groups") result = [{ id: 50, courseid: 4, name: "Synthetic subgroup" }];
-      else if (functionName === "core_group_get_group_members") result = [{ groupid: 50, userids: [11] }];
       else if (functionName === "core_enrol_get_enrolled_users") {
         const offsetKey = [...params.keys()].find((key) => params.get(key) === "limitfrom");
         const offset = offsetKey ? Number(params.get(offsetKey.replace("[name]", "[value]"))) : 0;
-        result = offset > 0 ? [] : [{ id: 11, firstname: fixture.pupilName.split(" ")[0], lastname: fixture.pupilName.split(" ").slice(1).join(" "), fullname: fixture.pupilName, email: "synthetic@example.invalid", roles: [{ roleid: 5, name: "Student", shortname: "student" }] }];
+        result = offset > 0 ? [] : [{ id: 11, firstname: fixture.pupilName.split(" ")[0], lastname: fixture.pupilName.split(" ").slice(1).join(" "), fullname: fixture.pupilName, email: "synthetic@example.invalid", groups: [{ id: 50, name: "Synthetic subgroup", description: "" }], roles: [{ roleid: 5, name: "Student", shortname: "student" }] }];
       } else if (functionName === "core_course_get_contents") result = [{ id: 1, name: "Section", modules: [{ id: 71, instance: 7, modname: "assign", name: fixture.activityTitle, url: `${server}/mod/assign/view.php?id=71`, contextid: 701 }] }];
       else if (functionName === "mod_assign_get_assignments") result = { courses: [{ id: 4, fullname: "Synthetic course", shortname: "SYN-4", assignments: [{ id: 7, cmid: 71, course: 4, name: fixture.activityTitle, grade: 100, duedate: 1900000000, teamsubmission: 0, blindmarking: 0, markingworkflow: 0, markingallocation: 0, configs: [] }] }], warnings: [] };
       else if (functionName === "core_course_get_course_module") result = { cm: { id: 71, course: 4, modname: "assign", instance: 7, name: fixture.activityTitle, contextid: 701 }, warnings: [] };
       else if (functionName === "core_grading_get_definitions") result = { areas: [{ cmid: 71, activemethod: "", definitions: [] }], warnings: [] };
       else if (functionName === "mod_assign_get_grades") result = { assignments: [{ assignmentid: 7, grades: [{ id: 2, userid: 11, grade: String(fixture.grade), timemodified: fixture.modifiedAt, attemptnumber: 0 }] }], warnings: [] };
+      else if (functionName === "gradereport_user_get_grade_items") result = { usergrades: [{ courseid: 4, userid: 11, userfullname: fixture.pupilName, maxdepth: 1, gradeitems: [{ id: 1, itemname: fixture.activityTitle, itemtype: "mod", itemmodule: "assign", iteminstance: 7, itemnumber: 0, cmid: 71, scaleid: 0, graderaw: fixture.grade, grademin: 0, grademax: 100, gradedategraded: fixture.modifiedAt }] }], warnings: [] };
       else if (functionName === "mod_assign_get_submissions") result = { assignments: [{ assignmentid: 7, submissions: [{ id: 3, userid: 11, status: "submitted", timemodified: 90, attemptnumber: 0, latest: 1 }] }], warnings: [] };
       else result = { exception: "invalid_parameter_exception", errorcode: "invalidparameter", message: `Unsupported synthetic function ${functionName}` };
       window.postMessage({ ...common, type: "bridge-response", requestId: message.requestId, ok: true, result: { status: 200, bodyText: JSON.stringify(result), finalUrl: request.url } }, location.origin);

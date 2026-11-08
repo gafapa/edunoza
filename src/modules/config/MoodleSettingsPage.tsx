@@ -84,10 +84,10 @@ function findExactNameMatch(label: string, candidates: Array<{ id: string; label
 function capabilityLabel(name: string): string {
   const labels: Record<string, string> = {
     core_enrol_get_enrolled_users: "Participantes",
-    core_group_get_course_groups: "Grupos de Moodle",
     core_course_get_contents: "Actividades",
     mod_assign_get_assignments: "Tareas",
-    mod_assign_get_grades: "Lectura de calificaciones",
+    mod_assign_get_grades: "Notas de tareas",
+    gradereport_user_get_grade_items: "Calificador (cuestionarios y otras actividades)",
     mod_assign_get_submissions: "Estado de entregas"
   };
   return labels[name] ?? name;
@@ -264,10 +264,11 @@ export function MoodleSettingsPage() {
   // engine actually validates (classId only) rather than gating on prior enrollment.
   const localStudents = scope ? students.filter((student) => student.classId === scope.classId) : [];
   const localTasks = scope ? tasks.filter((task) => taskSubjectKeys.has(`${task.id}:${scope.subjectId}`)) : [];
-  // Only "assign" modules can ever carry grades or submissions; separate them so the
-  // mapping list doesn't mix real tareas with forums, pages, labels and other resources.
-  const assignmentActivities = (snapshot?.activities ?? []).filter((activity) => activity.module === "assign");
-  const otherActivities = (snapshot?.activities ?? []).filter((activity) => activity.module !== "assign");
+  // Assignments and any activity with a numeric gradebook item (quizzes, lessons...) can carry
+  // grades; keep pages, labels and other resources apart so they don't clutter the mapping.
+  const isGradable = (activity: { module: string; gradeMax?: number }) => activity.module === "assign" || activity.gradeMax !== undefined;
+  const assignmentActivities = (snapshot?.activities ?? []).filter(isGradable);
+  const otherActivities = (snapshot?.activities ?? []).filter((activity) => !isGradable(activity));
   const scopedRemoteStudents = (() => {
     if (!snapshot) return [];
     if (!selectedGroupId) return snapshot.students;
@@ -811,7 +812,7 @@ export function MoodleSettingsPage() {
               {selectedClassId ? <label className="compact-field"><span>Materia de Edunoza</span><select value={selectedSubjectId} onChange={(event) => { setSelectedSubjectId(event.target.value); clearPreviews(); }}><option value="">Selecciona una materia</option><option value={NEW_SUBJECT_OPTION}>+ Crear materia nueva</option>{availableSubjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}
               {subjectIsNew ? <label className="compact-field"><span>Nombre de la materia</span><input className="input" required value={newSubjectName} onChange={(event) => setNewSubjectName(event.target.value)} /></label> : null}
               {snapshot.warnings.length ? <details className="moodle-warnings" open><summary>{snapshot.warnings.length} aviso(s) del servidor</summary><ul>{snapshot.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></details> : null}
-              <details className="moodle-capabilities"><summary>Detalles técnicos</summary><ul>{["core_enrol_get_enrolled_users", "core_group_get_course_groups", "core_course_get_contents", "mod_assign_get_assignments", "mod_assign_get_grades", "mod_assign_get_submissions"].map((name) => <li key={name}><span>{capabilityLabel(name)}</span><strong>{connection.functions.includes(name) ? "Disponible" : "No disponible"}</strong></li>)}</ul></details>
+              <details className="moodle-capabilities"><summary>Detalles técnicos</summary><ul>{["core_enrol_get_enrolled_users", "core_course_get_contents", "mod_assign_get_assignments", "mod_assign_get_grades", "gradereport_user_get_grade_items", "mod_assign_get_submissions"].map((name) => <li key={name}><span>{capabilityLabel(name)}</span><strong>{connection.functions.includes(name) ? "Disponible" : "No disponible"}</strong></li>)}</ul></details>
               <div className="moodle-actions moodle-step-actions"><button className="btn" type="submit" disabled={!scopeReady || Boolean(busy)}>{busy === "scope-create" ? "Creando…" : "Continuar a revisión"}</button></div>
             </> : null}
           </form>
@@ -832,8 +833,8 @@ export function MoodleSettingsPage() {
             {hasScopedLinks ? <button type="button" className="btn secondary" disabled={Boolean(busy)} onClick={() => bulkSetMappings("unlink-existing")}>Quitar todas las asociaciones</button> : null}
           </div>
           <details className="moodle-mapping-group" open><summary>Participantes · {scopedRemoteStudents.length}</summary>{scopedRemoteStudents.length ? <div className="moodle-mapping-list">{scopedRemoteStudents.map((student) => <MappingRow key={student.id} kind="student" remoteId={student.id} label={student.fullName} candidates={localStudents.map((item) => ({ id: item.id, label: item.fullName }))} binding={scopedBindings.find((item) => item.kind === "student" && item.remoteId === student.id)} draft={mappingDrafts[mappingKey("student", student.id)]} onChange={updateMappingDraft} />)}</div> : <p className="moodle-empty">No hay participantes en este ámbito.</p>}</details>
-          <details className="moodle-mapping-group" open><summary>Tareas · {assignmentActivities.length}</summary>{assignmentActivities.length ? <div className="moodle-mapping-list">{assignmentActivities.map((activity) => <MappingRow key={activity.id} kind="activity" remoteId={activity.id} label={activity.title} candidates={localTasks.map((item) => ({ id: item.id, label: item.title }))} binding={scopedBindings.find((item) => item.kind === "activity" && item.remoteId === activity.id)} draft={mappingDrafts[mappingKey("activity", activity.id)]} onChange={updateMappingDraft} />)}</div> : <p className="moodle-empty">No hay tareas en este curso de Moodle.</p>}</details>
-          <details className="moodle-mapping-group"><summary>Otros recursos de Moodle (sin notas) · {otherActivities.length}</summary><p className="moodle-step-guidance">Foros, páginas, etiquetas y otros recursos: puedes vincularlos como referencia, pero Moodle no permite leer notas ni entregas para ellos.</p>{otherActivities.length ? <div className="moodle-mapping-list">{otherActivities.map((activity) => <MappingRow key={activity.id} kind="activity" remoteId={activity.id} label={activity.title} candidates={localTasks.map((item) => ({ id: item.id, label: item.title }))} binding={scopedBindings.find((item) => item.kind === "activity" && item.remoteId === activity.id)} draft={mappingDrafts[mappingKey("activity", activity.id)]} onChange={updateMappingDraft} />)}</div> : <p className="moodle-empty">No hay otros recursos en este curso de Moodle.</p>}</details>
+          <details className="moodle-mapping-group" open><summary>Actividades evaluables · {assignmentActivities.length}</summary>{assignmentActivities.length ? <div className="moodle-mapping-list">{assignmentActivities.map((activity) => <MappingRow key={activity.id} kind="activity" remoteId={activity.id} label={activity.title} candidates={localTasks.map((item) => ({ id: item.id, label: item.title }))} binding={scopedBindings.find((item) => item.kind === "activity" && item.remoteId === activity.id)} draft={mappingDrafts[mappingKey("activity", activity.id)]} onChange={updateMappingDraft} />)}</div> : <p className="moodle-empty">No hay actividades evaluables en este curso de Moodle.</p>}</details>
+          <details className="moodle-mapping-group"><summary>Otros recursos de Moodle (sin notas numéricas) · {otherActivities.length}</summary><p className="moodle-step-guidance">Páginas, etiquetas y otros recursos sin calificación numérica: puedes vincularlos como referencia, pero no tienen notas que importar.</p>{otherActivities.length ? <div className="moodle-mapping-list">{otherActivities.map((activity) => <MappingRow key={activity.id} kind="activity" remoteId={activity.id} label={activity.title} candidates={localTasks.map((item) => ({ id: item.id, label: item.title }))} binding={scopedBindings.find((item) => item.kind === "activity" && item.remoteId === activity.id)} draft={mappingDrafts[mappingKey("activity", activity.id)]} onChange={updateMappingDraft} />)}</div> : <p className="moodle-empty">No hay otros recursos en este curso de Moodle.</p>}</details>
           <div className="moodle-actions">
             <button type="button" className="btn" disabled={Boolean(busy)} onClick={() => void checkMappings()}>Comprobar asociaciones</button>
             {mappingPreview ? <button type="button" className="btn" disabled={Boolean(busy) || mappingPreview.rows.some((row) => row.status === "invalid")} onClick={() => void confirmMappings()}>Guardar {mappingPreview.rows.length} asociación(es)</button> : null}
