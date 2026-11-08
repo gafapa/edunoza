@@ -131,7 +131,7 @@ export default defineConfig(({ mode }) => {
               return "db-vendor";
             }
             if (
-              /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom|history)[\\/]/.test(
+              /[\\/]node_modules[\\/](react|react-dom|react-router|react-router-dom)[\\/]/.test(
                 moduleId
               )
             ) {
