@@ -191,10 +191,11 @@ export function GradebookPage() {
       db.taskSessions.where("classId").equals(classId).toArray(),
       db.subjects.toArray(),
       db.unitBlocks.toArray(),
-      db.taskSubjectLinks.toArray(),
-      db.taskDailyEvaluationSettings.toArray(),
-      db.taskRubricAssessments.toArray(),
-      db.taskChecklistAssessments.toArray(),
+      subjectId ? db.taskSubjectLinks.where("subjectId").equals(subjectId).toArray() : db.taskSubjectLinks.toArray(),
+      // Rows are later narrowed with matchesTaskScope, which requires this class.
+      db.taskDailyEvaluationSettings.where("classId").equals(classId).toArray(),
+      db.taskRubricAssessments.where("classId").equals(classId).toArray(),
+      db.taskChecklistAssessments.where("classId").equals(classId).toArray(),
       db.taskDirectGrades.where("classId").equals(classId).toArray(),
       db.rubricTemplates.where("classId").equals(classId).toArray(),
       db.checklistTemplates.where("classId").equals(classId).toArray(),
@@ -1079,8 +1080,9 @@ export function GradebookPage() {
           const task = includedTaskConfigById.get(taskKey);
           if (task) await requireEditableTaskGradebookConfig(task, persistedTaskConfigKeys.has(taskKey) ? task : undefined);
         }
-        for (const group of groupUpdates) {
-          const current = await db.gradebookGroups.get(group.id);
+        const currentGroups = await db.gradebookGroups.bulkGet(groupUpdates.map((group) => group.id));
+        for (const [index, group] of groupUpdates.entries()) {
+          const current = currentGroups[index];
           const expected = gradebookGroupById.get(group.id);
           const encode = (value: GradebookGroup | undefined) => value && JSON.stringify(value, Object.keys(value).sort());
           if (!current || encode(current) !== encode(expected)) {

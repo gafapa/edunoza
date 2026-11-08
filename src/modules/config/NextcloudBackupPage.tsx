@@ -1,7 +1,6 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { createNextcloudClient, proxyMessage, MAX_NEXTCLOUD_BACKUP_BYTES, type RemoteBackup } from "../../shared/backup/nextcloud";
-import { liveQuery } from "dexie";
 import { buildCurrentPayload } from "../../shared/backup/database";
 import { estimateEncryptedBackupBytes } from "../../shared/backup/encryption";
 import { formatFileSize } from "../../shared/resources/resources";
@@ -36,13 +35,24 @@ export function NextcloudBackupPage() {
   const [preventiveName, setPreventiveName] = useState("");
   const [backupBytes, setBackupBytes] = useState<number | null>(null);
   const [sizeError, setSizeError] = useState("");
-  useEffect(() => {
-    const subscription = liveQuery(async () => estimateEncryptedBackupBytes(await buildCurrentPayload(), true)).subscribe({
-      next: value => { setBackupBytes(value); setSizeError(""); },
-      error: () => { setBackupBytes(null); setSizeError("No se pudo calcular el tamaño de la copia. Puedes descargar una copia local desde Base de datos."); }
-    });
-    return () => subscription.unsubscribe();
+  // Estimating the size serializes and compresses every table, so it runs on mount and
+  // after this page replaces the local data, never on every database write.
+  const sizeRequest = useRef(0);
+  const refreshBackupSize = useCallback(async () => {
+    const request = ++sizeRequest.current;
+    try {
+      const value = estimateEncryptedBackupBytes(await buildCurrentPayload(), true);
+      if (request !== sizeRequest.current) return;
+      setBackupBytes(value); setSizeError("");
+    } catch {
+      if (request !== sizeRequest.current) return;
+      setBackupBytes(null); setSizeError("No se pudo calcular el tamaño de la copia. Puedes descargar una copia local desde Base de datos.");
+    }
   }, []);
+  useEffect(() => {
+    void refreshBackupSize();
+    return () => { sizeRequest.current += 1; };
+  }, [refreshBackupSize]);
   const controller = useRef<AbortController | null>(null);
   useEffect(() => () => controller.current?.abort(), []);
   useUnsavedChangesGuard(busy || pendingRestore !== null, "Hay una operación con Nextcloud pendiente. Si sales, se descartará la revisión y una subida podría continuar sin que podamos verificarla. ¿Quieres salir?");
@@ -116,6 +126,7 @@ export function NextcloudBackupPage() {
     setStatus("Copia preventiva verificada. Restaurando los datos en este dispositivo…");
     await restoreDatabasePayload(pendingRestore.payload, current.tables, signal);
     setPendingRestore(null); setRestoreConfirmed(false); setRestorePassword("");
+    void refreshBackupSize();
     setStatus(`Restauración completada. Los borradores anteriores se han descartado. Tus datos anteriores están en la copia preventiva ${preventive.name}.`);
     try {
       await refreshAll();
