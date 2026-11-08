@@ -1,19 +1,14 @@
-import { useCallback, useContext, useEffect, useRef } from "react";
-import { UNSAFE_NavigationContext as NavigationContext, useBeforeUnload } from "react-router-dom";
+import { useCallback, useEffect, useRef } from "react";
+import { useBeforeUnload, useBlocker } from "react-router-dom";
 import { useUnsavedChangesDialog } from "../ui/UnsavedChangesDialog";
 
 const DEFAULT_MESSAGE = "Tienes cambios sin guardar. Si sales ahora, se perderan.";
 
-type BlockableNavigator = {
-  block?: (blocker: (tx: { retry: () => void }) => void) => () => void;
-};
-
 export function useUnsavedChangesGuard(when: boolean, message = DEFAULT_MESSAGE, beforeLeave?: () => Promise<boolean>): void {
-  const navigationContext = useContext(NavigationContext) as { navigator?: BlockableNavigator } | null;
   const dialog = useUnsavedChangesDialog();
-  const latest = useRef({ when, beforeLeave });
+  const latest = useRef({ when, beforeLeave, message, dialog });
   const navigating = useRef(false);
-  useEffect(() => { latest.current = { when, beforeLeave }; }, [when, beforeLeave]);
+  useEffect(() => { latest.current = { when, beforeLeave, message, dialog }; }, [when, beforeLeave, message, dialog]);
 
   const handleBeforeUnload = useCallback(
     (event: BeforeUnloadEvent) => {
@@ -28,55 +23,52 @@ export function useUnsavedChangesGuard(when: boolean, message = DEFAULT_MESSAGE,
 
   useBeforeUnload(handleBeforeUnload, { capture: true });
 
+  const blocker = useBlocker(when);
+  const latestBlocker = useRef(blocker);
+  useEffect(() => { latestBlocker.current = blocker; }, [blocker]);
+
   useEffect(() => {
-    if (!when) {
+    if (blocker.state !== "blocked" || navigating.current) {
       return;
     }
-    const block = navigationContext?.navigator?.block;
-    if (typeof block !== "function") {
-      return;
-    }
+    navigating.current = true;
+    const leave = () => latestBlocker.current.proceed?.();
+    const stay = () => latestBlocker.current.reset?.();
 
-    const unblock = block((tx) => {
-      void (async () => {
-        if (navigating.current) return;
-        navigating.current = true;
-        try {
-          if (!latest.current.when) {
-            unblock();
-            tx.retry();
-            return;
-          }
-          if (latest.current.beforeLeave) {
-            let saved = false;
-            try {
-              saved = await latest.current.beforeLeave();
-            } catch {
-              // A failed save still requires an explicit decision to discard changes.
-            }
-            if (saved) {
-              unblock();
-              tx.retry();
-              return;
-            }
-          }
-          const shouldLeave = dialog
-            ? await dialog.confirmLeave(message)
-            : window.confirm(message);
-
-          if (!shouldLeave) {
-            return;
-          }
-          unblock();
-          tx.retry();
-        } catch {
-          // Stay on the current form if a save fails unexpectedly.
-        } finally {
-          navigating.current = false;
+    void (async () => {
+      try {
+        const { when: stillDirty, beforeLeave: save, message: prompt, dialog: confirmDialog } = latest.current;
+        if (!stillDirty) {
+          leave();
+          return;
         }
-      })();
-    });
+        if (save) {
+          let saved = false;
+          try {
+            saved = await save();
+          } catch {
+            // A failed save still requires an explicit decision to discard changes.
+          }
+          if (saved) {
+            leave();
+            return;
+          }
+        }
+        const shouldLeave = confirmDialog
+          ? await confirmDialog.confirmLeave(prompt)
+          : window.confirm(prompt);
 
-    return unblock;
-  }, [dialog, message, navigationContext, when]);
+        if (shouldLeave) {
+          leave();
+        } else {
+          stay();
+        }
+      } catch {
+        // Stay on the current form if a save fails unexpectedly.
+        stay();
+      } finally {
+        navigating.current = false;
+      }
+    })();
+  }, [blocker.state]);
 }
