@@ -3,11 +3,15 @@ import { defineConfig, loadEnv } from "vite";
 import react from "@vitejs/plugin-react";
 import type { Plugin, ResolvedConfig } from "vite";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { readdir, readFile, writeFile } from "node:fs/promises";
 import { join, relative, resolve } from "node:path";
 
 const PRECACHE_ASSETS_MARKER = "/* __EDUNOZA_PRECACHE_ASSETS__ */ []";
 const CACHE_NAME_MARKER = "__EDUNOZA_CACHE_NAME__";
+const IMMUTABLE_ASSETS_MARKER = "/* __EDUNOZA_IMMUTABLE_ASSETS__ */ []";
+// Vite/Rolldown emit `[name]-[hash].[ext]` with an 8-character base64url content hash.
+const CONTENT_HASHED_FILE_NAME = /-[A-Za-z0-9_-]{8}\.[A-Za-z0-9]+$/;
 
 export function normalizePrecacheAssetPaths(paths: string[]): string[] {
   return Array.from(
@@ -25,6 +29,27 @@ export function normalizePrecacheAssetPaths(paths: string[]): string[] {
         )
     )
   ).sort((left, right) => (left < right ? -1 : left > right ? 1 : 0));
+}
+
+/**
+ * Selects precached build files that are safe to reuse across deployments: emitted into
+ * the build assets directory with a content hash in the name and not copied from the
+ * public directory, whose files keep stable names while their bytes may change.
+ */
+export function selectImmutableAssetPaths(
+  precachePaths: string[],
+  publicPaths: string[],
+  assetsDirectory = "assets"
+): string[] {
+  const prefix = `${assetsDirectory.replace(/\\/g, "/").replace(/^\.?\/+|\/+$/g, "")}/`;
+  const publicFiles = new Set(normalizePrecacheAssetPaths(publicPaths));
+  return precachePaths.filter(
+    (path) =>
+      prefix !== "/" &&
+      path.startsWith(prefix) &&
+      !publicFiles.has(path) &&
+      CONTENT_HASHED_FILE_NAME.test(path.slice(path.lastIndexOf("/") + 1))
+  );
 }
 
 async function listOutputFiles(outputDirectory: string, currentDirectory = outputDirectory): Promise<string[]> {
@@ -64,6 +89,10 @@ function offlinePrecachePlugin(): Plugin {
         throw new Error("The offline precache manifest is missing required production assets.");
       }
 
+      const publicDirectory = resolvedConfig.publicDir;
+      const publicPaths = publicDirectory && existsSync(publicDirectory) ? await listOutputFiles(publicDirectory) : [];
+      const immutableAssetPaths = selectImmutableAssetPaths(assetPaths, publicPaths, resolvedConfig.build.assetsDir);
+
       const revisionHash = createHash("sha256");
       for (const assetPath of assetPaths) {
         revisionHash.update(assetPath);
@@ -75,14 +104,16 @@ function offlinePrecachePlugin(): Plugin {
       const serviceWorkerSource = await readFile(serviceWorkerPath, "utf8");
       if (
         !serviceWorkerSource.includes(PRECACHE_ASSETS_MARKER) ||
-        !serviceWorkerSource.includes(CACHE_NAME_MARKER)
+        !serviceWorkerSource.includes(CACHE_NAME_MARKER) ||
+        !serviceWorkerSource.includes(IMMUTABLE_ASSETS_MARKER)
       ) {
         throw new Error("The service worker precache markers are missing.");
       }
 
       const generatedSource = serviceWorkerSource
         .replace(CACHE_NAME_MARKER, () => cacheName)
-        .replace(PRECACHE_ASSETS_MARKER, () => JSON.stringify(assetPaths, null, 2));
+        .replace(PRECACHE_ASSETS_MARKER, () => JSON.stringify(assetPaths, null, 2))
+        .replace(IMMUTABLE_ASSETS_MARKER, () => JSON.stringify(immutableAssetPaths, null, 2));
       await writeFile(serviceWorkerPath, generatedSource, "utf8");
     }
   };

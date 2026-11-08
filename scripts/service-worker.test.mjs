@@ -99,3 +99,127 @@ test("offline deep links use the installed shell and missing shells return HTTP 
   const empty = worker({ offline: true, shell: null });
   assert.equal((await empty.fetch("/app/gradebook", { navigation: true })).status, 503);
 });
+
+function installer({ cacheEntries = {}, failFetch = () => false } = {}) {
+  const scope = "https://school.example/app/";
+  const prefix = `edunoza-scope-${encodeURIComponent(scope)}-`;
+  const installSource = readFileSync(new URL("../public/sw.js", import.meta.url), "utf8")
+    .replace("__EDUNOZA_CACHE_NAME__", "new")
+    .replace("/* __EDUNOZA_PRECACHE_ASSETS__ */ []", '["assets/app-AAAAAAAA.js", "assets/pdf-BBBBBBBB.js", "fonts/font.ttf", "index.html"]')
+    .replace("/* __EDUNOZA_IMMUTABLE_ASSETS__ */ []", '["assets/app-AAAAAAAA.js", "assets/pdf-BBBBBBBB.js", "assets/outside-precache-CCCCCCCC.js"]');
+  const stores = new Map(Object.entries(cacheEntries).map(([name, entries]) => [name, new Map(Object.entries(entries))]));
+  const fetched = [];
+  const cacheFor = (name) => {
+    if (!stores.has(name)) stores.set(name, new Map());
+    const store = stores.get(name);
+    return {
+      match: async (request) => {
+        const entry = store.get(String(request.url ?? request));
+        return entry === undefined ? undefined : entry instanceof Response ? entry : new Response(entry);
+      },
+      put: async (request, response) => { store.set(String(request.url ?? request), await response.text()); },
+      addAll: async (requests) => {
+        const responses = await Promise.all(requests.map(async (request) => {
+          assert.equal(request.cache, "reload");
+          fetched.push(request.url);
+          if (failFetch(request.url)) throw new TypeError("network failure");
+          return [request.url, `fresh ${new URL(request.url).pathname}`];
+        }));
+        for (const [url, body] of responses) store.set(url, body);
+      }
+    };
+  };
+  const listeners = {};
+  runInNewContext(installSource, {
+    URL, Request, Response, Set, Boolean,
+    self: {
+      registration: { scope },
+      location: { origin: "https://school.example" },
+      addEventListener: (name, listener) => { listeners[name] = listener; }
+    },
+    encodeURIComponent,
+    caches: { open: async (name) => cacheFor(name), keys: async () => [...stores.keys()] },
+    fetch: async () => { throw new Error("install must use cache.addAll"); }
+  });
+  return {
+    prefix,
+    fetched,
+    stores,
+    install: () => {
+      let completion;
+      listeners.install({ waitUntil: (value) => { completion = value; } });
+      return completion;
+    }
+  };
+}
+
+test("install copies unchanged hashed assets from this scope's previous cache and downloads the rest", async () => {
+  const scope = `edunoza-scope-${encodeURIComponent("https://school.example/app/")}-`;
+  const app = installer({
+    cacheEntries: {
+      [`${scope}old`]: {
+        "https://school.example/app/assets/app-AAAAAAAA.js": "installed app",
+        "https://school.example/app/fonts/font.ttf": "old font",
+        "https://school.example/app/index.html": "old html"
+      },
+      "edunoza-scope-other-old": { "https://school.example/app/assets/pdf-BBBBBBBB.js": "foreign scope" }
+    }
+  });
+  await app.install();
+  assert.deepEqual(app.fetched.sort(), [
+    "https://school.example/app/",
+    "https://school.example/app/assets/pdf-BBBBBBBB.js",
+    "https://school.example/app/fonts/font.ttf",
+    "https://school.example/app/index.html"
+  ]);
+  const installed = app.stores.get(`${scope}new`);
+  assert.equal(installed.get("https://school.example/app/assets/app-AAAAAAAA.js"), "installed app");
+  assert.equal(installed.get("https://school.example/app/fonts/font.ttf"), "fresh /app/fonts/font.ttf");
+  assert.equal(installed.get("https://school.example/app/index.html"), "fresh /app/index.html");
+  assert.equal(installed.get("https://school.example/app/assets/pdf-BBBBBBBB.js"), "fresh /app/assets/pdf-BBBBBBBB.js");
+  assert.equal(installed.has("https://school.example/app/assets/outside-precache-CCCCCCCC.js"), false);
+  // The previous installation stays intact until activation removes it.
+  assert.equal(app.stores.get(`${scope}old`).get("https://school.example/app/fonts/font.ttf"), "old font");
+});
+
+test("install downloads hashed assets again when the installed copy is an error or redirect", async () => {
+  const scope = `edunoza-scope-${encodeURIComponent("https://school.example/app/")}-`;
+  const redirected = new Response("redirected copy");
+  Object.defineProperty(redirected, "redirected", { value: true });
+  const app = installer({
+    cacheEntries: {
+      [`${scope}old`]: {
+        "https://school.example/app/assets/app-AAAAAAAA.js": new Response("missing", { status: 404 }),
+        "https://school.example/app/assets/pdf-BBBBBBBB.js": redirected
+      }
+    }
+  });
+  await app.install();
+  assert.ok(app.fetched.includes("https://school.example/app/assets/app-AAAAAAAA.js"));
+  assert.ok(app.fetched.includes("https://school.example/app/assets/pdf-BBBBBBBB.js"));
+});
+
+test("install still fails when a required download fails, keeping the active version", async () => {
+  const scope = `edunoza-scope-${encodeURIComponent("https://school.example/app/")}-`;
+  const app = installer({
+    cacheEntries: { [`${scope}old`]: { "https://school.example/app/assets/app-AAAAAAAA.js": "installed app" } },
+    failFetch: (url) => url.endsWith("/fonts/font.ttf")
+  });
+  await assert.rejects(app.install(), /network failure/);
+});
+
+test("static hosting long-caches only hashed assets and revalidates the shell and worker", () => {
+  const headers = readFileSync(new URL("../public/_headers", import.meta.url), "utf8");
+  const rules = new Map();
+  let path;
+  for (const line of headers.split(/\r?\n/)) {
+    if (/^\S/.test(line) && !line.startsWith("#")) path = line.trim();
+    const cacheControl = line.match(/^\s+Cache-Control:\s*(.+)$/)?.[1];
+    if (path && cacheControl) rules.set(path, cacheControl.trim());
+  }
+  assert.equal(rules.get("/assets/*"), "public, max-age=31536000, immutable");
+  for (const stable of ["/", "/index.html", "/sw.js", "/manifest.webmanifest"]) {
+    assert.equal(rules.get(stable), "no-cache");
+  }
+  assert.equal(rules.has("/*"), false, "a catch-all Cache-Control would merge into hashed asset headers");
+});

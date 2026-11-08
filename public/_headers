@@ -8,3 +8,17 @@
   Cross-Origin-Opener-Policy: same-origin
   Cross-Origin-Resource-Policy: same-origin
   Strict-Transport-Security: max-age=31536000; includeSubDomains; preload
+
+# Content-hashed build output never changes under the same URL.
+/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# The worker script, app shell and other stable-name files must revalidate on every use.
+/
+  Cache-Control: no-cache
+/index.html
+  Cache-Control: no-cache
+/sw.js
+  Cache-Control: no-cache
+/manifest.webmanifest
+  Cache-Control: no-cache

@@ -3,14 +3,60 @@ const CACHE_NAME = `${CACHE_PREFIX}__EDUNOZA_CACHE_NAME__`;
 const PRECACHE_ASSETS = /* __EDUNOZA_PRECACHE_ASSETS__ */ [];
 const ROOT_URL = new URL("./", self.registration.scope);
 const ASSET_URLS = new Set(PRECACHE_ASSETS.map((path) => new URL(path, ROOT_URL).href));
+// Build files whose names carry a content hash. The same URL always has the same bytes,
+// so an installed copy from an earlier version of this scope can be reused on update.
+const IMMUTABLE_ASSETS = /* __EDUNOZA_IMMUTABLE_ASSETS__ */ [];
+const IMMUTABLE_URLS = new Set(
+  IMMUTABLE_ASSETS.map((path) => new URL(path, ROOT_URL).href).filter((href) => ASSET_URLS.has(href))
+);
+
+function isReusableResponse(response) {
+  return Boolean(
+    response &&
+      response.ok &&
+      !response.redirected &&
+      (response.type === "basic" || response.type === "default")
+  );
+}
+
+async function findInstalledCopy(href, sourceCaches) {
+  for (const sourceCache of sourceCaches) {
+    const response = await sourceCache.match(href, { ignoreVary: true });
+    if (isReusableResponse(response)) return { sourceCache, response };
+  }
+  return undefined;
+}
 
 async function cacheAppShell() {
   const cache = await caches.open(CACHE_NAME);
-  const rootUrl = new URL("./", self.registration.scope);
+  // Only caches owned by this registration scope are trusted as copy sources; newest first.
+  const previousCacheNames = (await caches.keys())
+    .filter((key) => key.startsWith(CACHE_PREFIX) && key !== CACHE_NAME)
+    .reverse();
+  const sourceCaches = [cache, ...(await Promise.all(previousCacheNames.map((key) => caches.open(key))))];
+
+  const reusedAssets = await Promise.all(
+    PRECACHE_ASSETS.map(async (assetPath) => {
+      const href = new URL(assetPath, ROOT_URL).href;
+      if (!IMMUTABLE_URLS.has(href)) return false;
+      try {
+        const installed = await findInstalledCopy(href, sourceCaches);
+        if (!installed) return false;
+        if (installed.sourceCache !== cache) await cache.put(href, installed.response);
+        return true;
+      } catch {
+        // Any copy failure falls back to a network download below.
+        return false;
+      }
+    })
+  );
+
+  // The shell and every non-hashed file (index.html, manifest, icons, fonts) are always
+  // downloaded fresh, bypassing the HTTP cache, so they stay paired with this build.
   const requests = [
-    new Request(rootUrl, { cache: "reload" }),
-    ...PRECACHE_ASSETS.map(
-      (assetPath) => new Request(new URL(assetPath, rootUrl), { cache: "reload" })
+    new Request(ROOT_URL, { cache: "reload" }),
+    ...PRECACHE_ASSETS.filter((_, index) => !reusedAssets[index]).map(
+      (assetPath) => new Request(new URL(assetPath, ROOT_URL), { cache: "reload" })
     )
   ];
   await cache.addAll(requests);
