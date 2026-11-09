@@ -9,14 +9,19 @@ type Guard = { when: boolean; message: string; beforeLeave?: () => Promise<boole
 // React Router supports a single active blocker, but nested pages (e.g. the tutor panel inside
 // the students page) can each have unsaved changes. Pages register here and one blocker decides.
 const guards = new Set<{ current: Guard }>();
+// Guards whose changes the user already saved or discarded for a navigation. The page being left
+// can stay mounted while the next lazy page loads; it must not block again in that window.
+const released = new WeakSet<{ current: Guard }>();
 
 function dirtyGuards(): { current: Guard }[] {
-  return [...guards].filter((guard) => guard.current.when);
+  return [...guards].filter((guard) => guard.current.when && !released.has(guard));
 }
 
 export function useUnsavedChangesGuard(when: boolean, message = DEFAULT_MESSAGE, beforeLeave?: () => Promise<boolean>): void {
   const latest = useRef<Guard>({ when, message, beforeLeave });
   useEffect(() => { latest.current = { when, message, beforeLeave }; }, [when, message, beforeLeave]);
+  // New unsaved changes after a navigation decision must be protected again.
+  useEffect(() => { released.delete(latest); }, [when]);
   useEffect(() => {
     guards.add(latest);
     return () => { guards.delete(latest); };
@@ -49,7 +54,10 @@ export function UnsavedChangesBlocker(): null {
       return;
     }
     navigating.current = true;
-    const leave = () => latestBlocker.current.proceed?.();
+    const leave = () => {
+      guards.forEach((guard) => released.add(guard));
+      latestBlocker.current.proceed?.();
+    };
     const stay = () => latestBlocker.current.reset?.();
 
     void (async () => {
