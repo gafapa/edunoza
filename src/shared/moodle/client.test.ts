@@ -383,6 +383,43 @@ describe("Moodle read-only protocol adapter", () => {
     expect(snapshot.groups).toEqual([{ id: 31, courseId: 5, name: "Group A", memberIds: [11] }]);
   });
 
+  it("fills assignment grades that only exist in the gradebook and honours grader-report overrides", async () => {
+    const base = fixtureTransport();
+    const scenario = { assign: [] as unknown[], gradebook: {} as Record<string, unknown> };
+    const transport: ProxyTransport = async (request, signal) => {
+      if (functionName(request) === "mod_assign_get_grades") {
+        return response(request, { assignments: [{ assignmentid: 91, grades: scenario.assign }], warnings: [] });
+      }
+      if (functionName(request) === "gradereport_user_get_grade_items") {
+        return response(request, { usergrades: [{ courseid: 5, userid: 11, userfullname: "Ana Example", maxdepth: 1, gradeitems: [
+          { id: 1, itemname: "Worksheet", itemtype: "mod", itemmodule: "assign", iteminstance: 91, itemnumber: 0, cmid: 501, scaleid: 0, grademin: 0, grademax: 20, gradedategraded: 30, ...scenario.gradebook }
+        ] }], warnings: [] });
+      }
+      return base(request, signal);
+    };
+    const read = async () => (await createMoodleClient(SERVER, TOKEN, { transport })
+      .getCourseSnapshot({ id: 5, fullName: "Mathematics", shortName: "MATH" })).grades;
+
+    // Graded only in the grader report: mod_assign returns nothing for the pupil.
+    scenario.gradebook = { graderaw: 15 };
+    expect(await read()).toEqual([expect.objectContaining({ activityId: 501, userId: 11, grade: 15 })]);
+
+    // mod_assign has an ungraded row (-1): the gradebook value fills it.
+    scenario.assign = [{ id: 1, userid: 11, attemptnumber: 0, timecreated: 10, timemodified: 20, grader: 42, grade: "-1.00000" }];
+    expect(await read()).toEqual([expect.objectContaining({ activityId: 501, grade: 15 })]);
+
+    // Both exist: mod_assign wins unless the grader report overrode it.
+    scenario.assign = [{ id: 1, userid: 11, attemptnumber: 0, timecreated: 10, timemodified: 20, grader: 42, grade: "17.5" }];
+    expect(await read()).toEqual([expect.objectContaining({ activityId: 501, grade: 17.5 })]);
+    scenario.gradebook = { graderaw: 15, gradeisoverridden: true };
+    expect(await read()).toEqual([expect.objectContaining({ activityId: 501, grade: 15 })]);
+
+    // A gradebook range different from the assignment maximum is converted to that maximum.
+    scenario.assign = [];
+    scenario.gradebook = { graderaw: 50, grademax: 100 };
+    expect(await read()).toEqual([expect.objectContaining({ activityId: 501, grade: 10 })]);
+  });
+
   it("keeps the snapshot when the gradebook rejects the request", async () => {
     const base = fixtureTransport();
     const transport: ProxyTransport = async (request, signal) => functionName(request) === "gradereport_user_get_grade_items"

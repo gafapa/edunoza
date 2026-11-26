@@ -685,15 +685,37 @@ export function createMoodleClient(
     ]);
     warnings.push(...grading.warnings);
 
-    // Assignment grades come from mod_assign when available (it knows attempts). Every other
-    // graded activity, and assignments on services without mod_assign_get_grades, use the gradebook.
-    const grades: MoodleGrade[] = assignGrades
-      ? assignGrades.grades.map((grade) => ({ ...grade, activityId: assignmentCmid.get(grade.activityId)! }))
-      : [];
+    // Assignment grades come from mod_assign when available (it knows attempts); every other graded
+    // activity uses the gradebook. The gradebook also fills assignment gaps: a grade typed or
+    // overridden in the grader report, or an assignment whose grades mod_assign withheld (for
+    // example without mod/assign:grade), exists only there.
+    const assignmentMaxByCmid = new Map(assignmentResult.assignments.map((assignment) => [assignment.cmid, assignment.grade]));
+    const gradebookByKey = new Map((gradebook?.grades ?? []).map((grade) => [`${grade.activityId}:${grade.userId}`, grade]));
+    const fromGradebook = (grade: MoodleGrade): MoodleGrade => {
+      // Express the gradebook value on the assignment's own maximum, which the import converts from.
+      const assignmentMax = assignmentMaxByCmid.get(grade.activityId);
+      const gradebookMax = gradebook?.maxByCmid.get(grade.activityId);
+      if (grade.grade === null || !assignmentMax || !gradebookMax || assignmentMax === gradebookMax) return grade;
+      return { ...grade, grade: Math.round((grade.grade / gradebookMax) * assignmentMax * 100000) / 100000 };
+    };
+    const grades: MoodleGrade[] = [];
+    const assignmentKeys = new Set<string>();
+    for (const wireGrade of assignGrades?.grades ?? []) {
+      const grade = { ...wireGrade, activityId: assignmentCmid.get(wireGrade.activityId)! };
+      const key = `${grade.activityId}:${grade.userId}`;
+      assignmentKeys.add(key);
+      const gradebookGrade = gradebookByKey.get(key);
+      const preferGradebook = gradebookGrade && gradebookGrade.grade !== null && (grade.grade === null || gradebookGrade.overridden);
+      grades.push(preferGradebook ? fromGradebook(gradebookGrade) : grade);
+    }
     if (assignGrades) warnings.push(...assignGrades.warnings);
     if (gradebook) {
       warnings.push(...gradebook.warnings);
-      grades.push(...gradebook.grades.filter((grade) => !assignGrades || modules.get(grade.activityId)?.module !== "assign"));
+      for (const grade of gradebook.grades) {
+        const isAssignment = modules.get(grade.activityId)?.module === "assign";
+        if (!isAssignment) grades.push(grade);
+        else if (!assignmentKeys.has(`${grade.activityId}:${grade.userId}`) && assignmentMaxByCmid.has(grade.activityId)) grades.push(fromGradebook(grade));
+      }
     }
     if (!assignGrades && !gradebook) {
       warnings.push("El servicio web de Moodle no permite leer calificaciones; no se mostrarán como una lista vacía confirmada.");

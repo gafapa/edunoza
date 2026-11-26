@@ -68,7 +68,7 @@ The adapter uses an explicit read-only allowlist. Site identity and accessible c
 
 Edunoza needs no Moodle plugin (MoodlIA or otherwise). Every function it calls ships with Moodle core, and all grade sources are in the default `moodle_mobile_app` service used by username/password login:
 
-- `mod_assign_get_grades` for assignments (attempt-aware). When the service lacks it, assignment grades fall back to the gradebook.
+- `mod_assign_get_grades` for assignments (attempt-aware). When the service lacks it, assignment grades fall back to the gradebook. The gradebook also fills individual gaps: a pupil with no numeric grade in `mod_assign` (graded only in the grader report, or withheld for lack of `mod/assign:grade`) takes the gradebook grade, and a grade overridden in the grader report wins over the assignment's own. Gradebook values are expressed on the assignment's maximum before the 0–10 conversion.
 - `gradereport_user_get_grade_items`, called once per course with `userid=0` (requires `moodle/grade:viewall`, which teachers hold by default), for every other activity with a gradebook item. Only the activity's main item (`itemnumber` 0) is read; course/category totals and manual items have no course module to link and are ignored.
 
 Gradebook items graded with a scale, with a minimum other than 0, or without a visible range (the user report's *Show range* setting disabled) are not imported, and a warning says so. A gradebook permission error only adds a warning; the course snapshot and assignment grades remain usable. Activities other than assignments and forums cannot use advanced grading, so their numeric grade is offered as a direct grade; forum grades still require the individual numeric-result confirmation.
