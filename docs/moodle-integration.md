@@ -69,6 +69,8 @@ Edunoza needs no Moodle plugin (MoodlIA or otherwise). Every function it calls s
 
 Gradebook items graded with a scale, with a minimum other than 0, or without a visible range (the user report's *Show range* setting disabled) are not imported, and a warning says so. A gradebook permission error only adds a warning; the course snapshot and assignment grades remain usable. Activities other than assignments and forums cannot use advanced grading, so their numeric grade is offered as a direct grade; forum grades still require the individual numeric-result confirmation.
 
+Imported grades are stored as direct grades of the linked task. Tasks created from Moodle activities are sent to the gradebook, and importing a grade also sends a linked local task there, because the gradebook only lists tasks marked with `sendToGradebook`.
+
 ## Single-flow redesign and returning updates
 
 The connector was redesigned from an earlier two-subsection, seven-step wizard into the single three-step flow described above, without dropping any capability: every preview-before-apply step, conflict-detection rule and safety guard documented in this file is unchanged — only its exposure to the teacher is simpler.

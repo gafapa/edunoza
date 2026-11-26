@@ -552,7 +552,8 @@ export async function applyMappingPreview(preview: MoodleMappingPreview, signal?
           await db.students.add(local);
           await db.subjectStudentLinks.add({ id: newId(), subjectId: preview.scope.subjectId, studentId: local.id });
         } else if (choice.action === "create" && choice.kind === "activity" && "title" in remote) {
-          local = { id: newId(), title: remote.title, description: "", sessionCount: 1, sendToGradebook: false };
+          // Moodle activities exist to be graded, so the gradebook must show the task they create.
+          local = { id: newId(), title: remote.title, description: "", sessionCount: 1, sendToGradebook: true };
           await db.tasks.add(local);
           await db.taskSubjectLinks.add({ id: newId(), taskId: local.id, subjectId: preview.scope.subjectId });
           const config: TaskGradebookConfig = { id: newId(), taskId: local.id, subjectId: preview.scope.subjectId, classId: preview.scope.classId, gradebookWeight: 0, directGradeEnabled: true };
@@ -739,6 +740,7 @@ export async function applyGrades(preview: MoodleGradePreview, resolutions: Reco
     try {
       await requireFreshPreview(preview.connectionId, preview.scope, preview.state, signal);
       let applied = 0;
+      const gradedTaskIds = new Set<string>();
       for (const row of preview.rows) {
         const resolution = resolutions[row.id];
         if (resolution !== "remote" && resolution !== "local" && resolution !== "numeric-result") throw new Error("Selecciona una resolución para cada calificación.");
@@ -768,9 +770,14 @@ export async function applyGrades(preview: MoodleGradePreview, resolutions: Reco
           const direct: TaskDirectGrade = { id: existing?.id ?? newId(), taskId: row.taskId, subjectId: preview.scope.subjectId,
             classId: preview.scope.classId, studentId: row.studentId, score: row.scaledGrade };
           await db.taskDirectGrades.put(direct);
+          gradedTaskIds.add(row.taskId);
           applied += 1;
         }
         signal?.throwIfAborted();
+      }
+      // The gradebook only lists tasks sent to it, so imported grades would otherwise stay hidden.
+      for (const task of await db.tasks.bulkGet([...gradedTaskIds])) {
+        if (task && !task.sendToGradebook) await db.tasks.update(task.id, { sendToGradebook: true });
       }
       await addOperation(preview.connectionId, "grades", "Calificaciones de Moodle revisadas", applied);
       signal?.throwIfAborted();

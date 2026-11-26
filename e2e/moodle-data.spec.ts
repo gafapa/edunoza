@@ -131,3 +131,34 @@ test("Moodle grade review requires individual numeric confirmation and rolls bac
   });
   expect(result).toEqual({ confirmationRejected: true, rolledBackScores: [6, 6, 6], reviewedScores: [7, 7, 6], methods: ["direct", "unknown", "advanced"], skipped: [], scores: [7, 7, 7] });
 });
+
+test("Imported Moodle grades land on tasks the gradebook lists", async ({ page }) => {
+  await page.goto("/config/preferences");
+  await seedMoodleLocalRecords(page);
+  const result = await page.evaluate(async () => {
+    const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
+    const service = await import(/* @vite-ignore */ "/src/shared/moodle/service.ts");
+    const connection = await service.saveConnection({ siteUrl: "https://moodle.example.invalid", siteName: "Synthetic", userId: 9, fullName: "Teacher", functions: [] });
+    const scope = { courseId: 4, classId: "moodle-local-class", subjectId: "moodle-local-subject" };
+    // A linked local task that was never sent to the gradebook.
+    await db.tasks.update("moodle-local-task", { sendToGradebook: false });
+    const activity = (id: number, title: string) => ({ id, courseId: 4, instanceId: id, module: "assign", title, url: `https://moodle.example.invalid/mod/assign/view.php?id=${id}`, gradeMax: 10, advancedGrading: false, teamSubmission: false });
+    const snapshot = { course: { id: 4, fullName: "Remote course", shortName: "RC" }, groups: [], students: [{ id: 11, firstName: "Remote", lastName: "Pupil", fullName: "Remote Pupil" }],
+      activities: [activity(71, "Linked"), activity(72, "Created")], grades: [{ activityId: 71, userId: 11, grade: 8, modifiedAt: 100 }, { activityId: 72, userId: 11, grade: 9, modifiedAt: 100 }],
+      submissions: [], warnings: [], fetchedAt: new Date().toISOString() };
+    const bindings = await service.applyMappingPreview(await service.createMappingPreview(connection.id, snapshot, scope, [
+      { kind: "student", remoteId: 11, action: "link", localId: "moodle-local-student" },
+      { kind: "activity", remoteId: 71, action: "link", localId: "moodle-local-task" },
+      { kind: "activity", remoteId: 72, action: "create" }
+    ]));
+    const createdTaskId = bindings.find((binding) => binding.kind === "activity" && binding.remoteId === 72)!.localId;
+    const createdBeforeGrades = (await db.tasks.get(createdTaskId))?.sendToGradebook;
+    const preview = await service.previewGrades(connection.id, snapshot, scope);
+    await service.applyGrades(preview, Object.fromEntries(preview.rows.map((row) => [row.id, "remote"])));
+    const gradebookTaskIds = (await db.tasks.filter((task) => Boolean(task.sendToGradebook)).toArray()).map((task) => task.id);
+    const scores = Object.fromEntries((await db.taskDirectGrades.where("classId").equals(scope.classId).toArray()).map((grade) => [grade.taskId, grade.score]));
+    return { createdBeforeGrades, linkedListed: gradebookTaskIds.includes("moodle-local-task"), createdListed: gradebookTaskIds.includes(createdTaskId),
+      linkedScore: scores["moodle-local-task"], createdScore: scores[createdTaskId], skipped: preview.skipped.length };
+  });
+  expect(result).toEqual({ createdBeforeGrades: true, linkedListed: true, createdListed: true, linkedScore: 8, createdScore: 9, skipped: 0 });
+});
