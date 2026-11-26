@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
+import { useAppDispatch } from "../../app/hooks";
+import { setSelectedClass, setSelectedSubject } from "../../app/store";
 import { obtainMoodleToken } from "../../shared/moodle/auth";
 import { hasConnectionPreference, useConnectionPreference } from "../../shared/hooks/useConnectionPreference";
 import { readMoodleToken, removeMoodleToken, saveMoodleToken } from "../../shared/moodle/credentials";
@@ -20,11 +22,13 @@ import {
   previewUpdates,
   saveConnection,
   type MoodleGradePreview,
+  type MoodleGradePreviewRow,
   type MoodleGradeResolution,
-  type MoodleMappingPreview,
+  type MoodleGradeSkip,
   type MoodleUpdatePreview
 } from "../../shared/moodle/service";
 import type {
+  MoodleActivity,
   MoodleBinding,
   MoodleConnection,
   MoodleCourse,
@@ -40,10 +44,20 @@ import "./MoodleSettingsPage.css";
 const NEW_CLASS_OPTION = "__create__";
 const NEW_SUBJECT_OPTION = "__create__";
 
-type Step = "connect" | "scope" | "link" | "apply";
+type Step = "connect" | "scope" | "link" | "apply" | "done";
 type Notice = { tone: "info" | "success" | "error"; text: string };
-type BusyAction = "connect" | "snapshot" | "scope-create" | "mapping-check" | "mapping-apply" | "review-preview" | "review-apply" | "forget" | null;
+type BusyAction = "connect" | "snapshot" | "scope-create" | "mapping-apply" | "review-preview" | "review-apply" | "forget" | null;
 type MappingDraft = { action: MoodleMappingChoice["action"]; localId?: string };
+/** `null` means the teacher still has to choose. */
+type MappingDecision = MappingDraft | null;
+type ImportSummary = {
+  classId: string;
+  subjectId: string;
+  imported: number;
+  updates: number;
+  tasks: Array<{ taskId: string; title: string; count: number; weight: number }>;
+  unweightedTaskCount: number;
+};
 
 const dateFormatter = new Intl.DateTimeFormat("es-ES", {
   day: "numeric",
@@ -52,6 +66,7 @@ const dateFormatter = new Intl.DateTimeFormat("es-ES", {
   hour: "2-digit",
   minute: "2-digit"
 });
+const gradeFormatter = new Intl.NumberFormat("es-ES", { maximumFractionDigits: 2 });
 
 function errorMessage(error: unknown): string {
   if (error instanceof DOMException && error.name === "AbortError") return "Operación cancelada.";
@@ -64,12 +79,19 @@ function formatDate(value?: number | string): string {
   return Number.isNaN(date.getTime()) ? "Fecha no disponible" : dateFormatter.format(date);
 }
 
+function formatGrade(value: number | null): string {
+  return value === null ? "sin nota" : gradeFormatter.format(value);
+}
+
+function plural(count: number, singular: string, pluralForm: string): string {
+  return `${count} ${count === 1 ? singular : pluralForm}`;
+}
+
 function mappingKey(kind: "student" | "activity", remoteId: number): string {
   return `${kind}:${remoteId}`;
 }
 
-/** Exact-match only (accents/case/whitespace-insensitive): a suggestion the teacher must
- * still confirm explicitly, never an automatic link — "similar" names are not enough. */
+/** Exact match only (accents/case/whitespace-insensitive). Similar names are never enough. */
 function normalizeNameForMatch(name: string): string {
   return name.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().trim().replace(/\s+/g, " ");
 }
@@ -93,23 +115,36 @@ function capabilityLabel(name: string): string {
   return labels[name] ?? name;
 }
 
+function moduleLabel(module: string): string {
+  return ({ assign: "Tarea", quiz: "Cuestionario", forum: "Foro", workshop: "Taller", lesson: "Lección", glossary: "Glosario", h5pactivity: "H5P", scorm: "SCORM" } as Record<string, string>)[module] ?? module;
+}
+
 function fieldLabel(field: string): string {
   return ({ firstName: "Nombre", lastName: "Apellidos", fullName: "Nombre completo", email: "Correo", title: "Título" } as Record<string, string>)[field] ?? field;
 }
 
-function mappingActionLabel(action: MoodleMappingChoice["action"]): string {
-  return ({ link: "Vincular", create: "Crear", ignore: "Ignorar", unlink: "Quitar asociación" })[action];
-}
-
 function operationKindLabel(kind: MoodleOperation["kind"]): string {
-  return ({ link: "asociaciones", update: "actualizaciones", grades: "calificaciones" })[kind];
+  return ({ link: "emparejamiento", update: "cambios de nombre", grades: "notas" })[kind];
 }
 
 function submissionStatusLabel(status: string): string {
   return ({ submitted: "Entregada", new: "Sin entregar", draft: "Borrador", graded: "Calificada", reopened: "Reabierta" } as Record<string, string>)[status.toLowerCase()] ?? status;
 }
 
+function encodeDecision(decision: MappingDecision): string {
+  if (!decision) return "";
+  return decision.action === "link" ? `link:${decision.localId ?? ""}` : decision.action;
+}
+
+function decodeDecision(value: string): MappingDraft | undefined {
+  if (value.startsWith("link:")) return { action: "link", localId: value.slice(5) };
+  if (value === "create" || value === "ignore" || value === "unlink") return { action: value };
+  return undefined;
+}
+
 export function MoodleSettingsPage() {
+  const dispatch = useAppDispatch();
+  const navigate = useNavigate();
   const clientRef = useRef<MoodleClient | null>(null);
   const pendingClientRef = useRef<MoodleClient | null>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -118,7 +153,7 @@ export function MoodleSettingsPage() {
 
   const [busy, setBusy] = useState<BusyAction>(null);
   const [step, setStep] = useState<Step>("connect");
-  const [notice, setNotice] = useState<Notice>({ tone: "info", text: "Conecta tu cuenta cuando necesites consultar datos de Moodle." });
+  const [notice, setNotice] = useState<Notice>({ tone: "info", text: "Conecta tu cuenta de Moodle para empezar." });
 
   const [server, setServer] = useConnectionPreference("moodle.server");
   const [token, setToken] = useState(() => readMoodleToken(server)?.token ?? "");
@@ -153,11 +188,15 @@ export function MoodleSettingsPage() {
   const [taskSubjectKeys, setTaskSubjectKeys] = useState<Set<string>>(new Set());
 
   const [mappingDrafts, setMappingDrafts] = useState<Record<string, MappingDraft>>({});
-  const [mappingPreview, setMappingPreview] = useState<MoodleMappingPreview | null>(null);
+  const [mappingErrors, setMappingErrors] = useState<string[]>([]);
   const [updatePreview, setUpdatePreview] = useState<MoodleUpdatePreview | null>(null);
   const [updateResolutions, setUpdateResolutions] = useState<Record<string, MoodleResolution>>({});
   const [gradePreview, setGradePreview] = useState<MoodleGradePreview | null>(null);
-  const [gradeResolutions, setGradeResolutions] = useState<Record<string, MoodleGradeResolution>>({});
+  /** Only rows whose Moodle grade differs from an existing local grade need a choice. */
+  const [conflictChoices, setConflictChoices] = useState<Record<string, "local" | "remote">>({});
+  /** Activities graded with a rubric (or an unverified method) whose final grade the teacher accepted. */
+  const [confirmedNumericActivities, setConfirmedNumericActivities] = useState<Set<number>>(new Set());
+  const [summary, setSummary] = useState<ImportSummary | null>(null);
 
   const cancelPending = (announce = false): void => {
     requestVersionRef.current += 1;
@@ -167,7 +206,7 @@ export function MoodleSettingsPage() {
     pendingClientRef.current = null;
     setBusy(null);
     setPassword("");
-    if (announce) setNotice({ tone: "info", text: "Operación cancelada. No se ha aplicado ningún cambio local nuevo." });
+    if (announce) setNotice({ tone: "info", text: "Operación cancelada. No se ha cambiado nada en Edunoza." });
   };
 
   const beginRequest = (action: Exclude<BusyAction, null>): { controller: AbortController; version: number } => {
@@ -258,16 +297,15 @@ export function MoodleSettingsPage() {
     classId: selectedClassId,
     subjectId: selectedSubjectId
   };
+  const className = (classId: string) => classes.find((item) => item.id === classId)?.name ?? "Clase";
+  const subjectName = (subjectId: string) => subjects.find((item) => item.id === subjectId)?.name ?? "Materia";
   const availableSubjects = classIsNew ? [] : subjects.filter((subject) => !selectedClassId || subjectCourseKeys.has(`${selectedClassId}:${subject.id}`));
-  // Any student in the class is a valid link target, not just ones already enrolled in
-  // this subject: linking enrolls them (see applyMappingPreview), matching what the
-  // engine actually validates (classId only) rather than gating on prior enrollment.
+  // Any student in the class is a valid target: linking enrolls them in the subject.
   const localStudents = scope ? students.filter((student) => student.classId === scope.classId) : [];
   const localTasks = scope ? tasks.filter((task) => taskSubjectKeys.has(`${task.id}:${scope.subjectId}`)) : [];
-  // Assignments and any activity with a numeric gradebook item (quizzes, lessons...) can carry
-  // grades; keep pages, labels and other resources apart so they don't clutter the mapping.
+  // Assignments and any activity with a numeric gradebook item can carry grades; other resources stay out.
   const isGradable = (activity: { module: string; gradeMax?: number }) => activity.module === "assign" || activity.gradeMax !== undefined;
-  const assignmentActivities = (snapshot?.activities ?? []).filter(isGradable);
+  const gradableActivities = (snapshot?.activities ?? []).filter(isGradable);
   const otherActivities = (snapshot?.activities ?? []).filter((activity) => !isGradable(activity));
   const scopedRemoteStudents = (() => {
     if (!snapshot) return [];
@@ -282,25 +320,63 @@ export function MoodleSettingsPage() {
     item.subjectId === scope.subjectId &&
     item.remoteGroupId === scope.remoteGroupId
   );
+  const bindingFor = (kind: "student" | "activity", remoteId: number) =>
+    scopedBindings.find((item) => item.kind === kind && item.remoteId === remoteId);
   const hasScopedLinks = scopedBindings.some((item) => item.kind === "student" || item.kind === "activity");
-  const exactMatchCount = (() => {
-    const studentCandidates = localStudents.map((item) => ({ id: item.id, label: item.fullName }));
-    const taskCandidates = localTasks.map((item) => ({ id: item.id, label: item.title }));
-    let count = 0;
+
+  // Exact, unambiguous name matches against local records that nothing else is linked to are
+  // pre-selected. They are only saved when the teacher presses "Guardar", and can be changed.
+  const autoMatches = (() => {
+    const result = new Map<string, string>();
+    const boundStudents = new Set(scopedBindings.filter((item) => item.kind === "student").map((item) => item.localId));
+    const boundTasks = new Set(scopedBindings.filter((item) => item.kind === "activity").map((item) => item.localId));
+    const studentCandidates = localStudents.filter((item) => !boundStudents.has(item.id)).map((item) => ({ id: item.id, label: item.fullName }));
+    const taskCandidates = localTasks.filter((item) => !boundTasks.has(item.id)).map((item) => ({ id: item.id, label: item.title }));
+    const uses = new Map<string, number>();
+    const propose = (key: string, match?: { id: string }) => {
+      if (!match) return;
+      result.set(key, match.id);
+      uses.set(match.id, (uses.get(match.id) ?? 0) + 1);
+    };
     for (const student of scopedRemoteStudents) {
-      if (scopedBindings.some((item) => item.kind === "student" && item.remoteId === student.id)) continue;
-      const draftAction = mappingDrafts[mappingKey("student", student.id)]?.action ?? "ignore";
-      if (draftAction !== "ignore") continue;
-      if (findExactNameMatch(student.fullName, studentCandidates)) count += 1;
+      if (!bindingFor("student", student.id)) propose(mappingKey("student", student.id), findExactNameMatch(student.fullName, studentCandidates));
     }
-    for (const activity of snapshot?.activities ?? []) {
-      if (scopedBindings.some((item) => item.kind === "activity" && item.remoteId === activity.id)) continue;
-      const draftAction = mappingDrafts[mappingKey("activity", activity.id)]?.action ?? "ignore";
-      if (draftAction !== "ignore") continue;
-      if (findExactNameMatch(activity.title, taskCandidates)) count += 1;
+    for (const activity of gradableActivities) {
+      if (!bindingFor("activity", activity.id)) propose(mappingKey("activity", activity.id), findExactNameMatch(activity.title, taskCandidates));
     }
-    return count;
+    for (const [key, localId] of result) if ((uses.get(localId) ?? 0) > 1) result.delete(key);
+    return result;
   })();
+  const freeLocalStudentCount = (() => {
+    const used = new Set([...scopedBindings.filter((item) => item.kind === "student").map((item) => item.localId), ...autoMatches.values()]);
+    return localStudents.filter((item) => !used.has(item.id)).length;
+  })();
+  const studentDecision = (remoteId: number): MappingDecision => {
+    const key = mappingKey("student", remoteId);
+    const binding = bindingFor("student", remoteId);
+    if (mappingDrafts[key]) return mappingDrafts[key];
+    if (binding) return { action: "link", localId: binding.localId };
+    if (autoMatches.has(key)) return { action: "link", localId: autoMatches.get(key) };
+    // With unlinked students left in the class, a new record could duplicate one of them: ask.
+    return freeLocalStudentCount > 0 ? null : { action: "create" };
+  };
+  const activityDecision = (remoteId: number): MappingDraft => {
+    const key = mappingKey("activity", remoteId);
+    const binding = bindingFor("activity", remoteId);
+    if (mappingDrafts[key]) return mappingDrafts[key];
+    if (binding) return { action: "link", localId: binding.localId };
+    if (autoMatches.has(key)) return { action: "link", localId: autoMatches.get(key) };
+    return { action: "create" };
+  };
+  const studentRows = scopedRemoteStudents.map((student) => ({ student, decision: studentDecision(student.id), binding: bindingFor("student", student.id) }));
+  const matchedStudentRows = studentRows.filter((row) => row.decision?.action === "link" && !mappingDrafts[mappingKey("student", row.student.id)]);
+  const attentionStudentRows = studentRows.filter((row) => !matchedStudentRows.includes(row));
+  const undecidedCount = studentRows.filter((row) => row.decision === null).length;
+  const newStudentCount = studentRows.filter((row) => row.decision?.action === "create").length;
+  const linkedStudentCount = studentRows.filter((row) => row.decision?.action === "link").length;
+  const unlinkedRemoteCount = scopedRemoteStudents.filter((item) => !bindingFor("student", item.id)).length +
+    gradableActivities.filter((item) => !bindingFor("activity", item.id)).length;
+
   const hasValidServer = (() => {
     try {
       normalizeMoodleUrl(server);
@@ -312,20 +388,31 @@ export function MoodleSettingsPage() {
   const classFieldsValid = !classIsNew || (newClassName.trim().length > 0 && newClassLevel.trim().length > 0 && /^\d{4}-\d{4}$/.test(newSchoolYear));
   const subjectFieldsValid = !subjectIsNew || newSubjectName.trim().length > 0;
   const scopeReady = Boolean(snapshot && selectedClassId && classFieldsValid && selectedSubjectId && subjectFieldsValid);
+  const previousImports = (() => {
+    if (!connection) return [];
+    const seen = new Map<string, MoodleBinding>();
+    for (const item of bindings) {
+      if (item.kind !== "course" || item.connectionId !== connection.id) continue;
+      if (!courses.some((course) => course.id === item.courseId)) continue;
+      if (!classes.some((entry) => entry.id === item.classId) || !subjects.some((entry) => entry.id === item.subjectId)) continue;
+      seen.set(`${item.courseId}:${item.remoteGroupId ?? "all"}:${item.classId}:${item.subjectId}`, item);
+    }
+    return [...seen.values()];
+  })();
 
   const steps: MoodleWorkflowStep[] = [
-    { id: "connect", label: "Conectar", description: "Servidor y cuenta", complete: Boolean(connection) },
-    { id: "scope", label: "Elegir clase", description: "Curso y destino en Edunoza", disabled: !connection, complete: Boolean(snapshot && scope) },
-    { id: "link", label: "Vincular", description: "Alumnado y actividades", disabled: !connection || !snapshot || !scope, complete: hasScopedLinks },
-    { id: "apply", label: "Revisar y aplicar", description: "Cambios y notas", disabled: !connection || !snapshot || !scope || !hasScopedLinks }
+    { id: "scope", label: "Origen y destino", complete: Boolean(snapshot && scope && (step === "link" || step === "apply" || step === "done")) },
+    { id: "link", label: "Emparejar", disabled: !snapshot || !scope, complete: hasScopedLinks && (step === "apply" || step === "done") },
+    { id: "apply", label: "Notas", disabled: !snapshot || !scope || !hasScopedLinks, complete: step === "done" }
   ];
 
   const clearPreviews = (): void => {
-    setMappingPreview(null);
+    setMappingErrors([]);
     setUpdatePreview(null);
     setUpdateResolutions({});
     setGradePreview(null);
-    setGradeResolutions({});
+    setConflictChoices({});
+    setConfirmedNumericActivities(new Set());
   };
 
   const resetScopeSelection = (): void => {
@@ -379,13 +466,14 @@ export function MoodleSettingsPage() {
       setToken("");
       setSelectedCourseId("");
       setSnapshot(null);
+      setSummary(null);
       setStep("scope");
       const savedBindings = await getBindings(savedConnection.id);
       if (!isCurrent(version)) return;
       setBindings(savedBindings);
       await reloadMetadata(savedConnection.id, version);
       if (!isCurrent(version)) return;
-      setNotice({ tone: "success", text: `Conectado a ${savedConnection.siteName} como ${savedConnection.userName}. ${tokenSaved ? "Token guardado en este navegador; no se guarda el usuario de acceso ni la contraseña." : "El navegador no permitió guardar el token; solo estará disponible en esta sesión."} Elige ahora un curso.` });
+      setNotice({ tone: "success", text: `Conectado a ${savedConnection.siteName} como ${savedConnection.userName}. ${tokenSaved ? "El token queda guardado en este navegador; el usuario y la contraseña no." : "El navegador no permitió guardar el token; solo estará disponible en esta sesión."}` });
     } catch (error) {
       if (isCurrent(version)) {
         pendingClientRef.current?.dispose();
@@ -412,11 +500,12 @@ export function MoodleSettingsPage() {
     resetScopeSelection();
     setSnapshot(null);
     setBindings([]);
+    setSummary(null);
     setStep("connect");
-    setNotice({ tone: "info", text: "Sesión desconectada. Las asociaciones y los datos académicos se conservan." });
+    setNotice({ tone: "info", text: "Sesión desconectada. Los emparejamientos y los datos de Edunoza se conservan." });
   };
 
-  /** Lands on "apply" only when this scope already has at least one saved link to review; otherwise "link" first. */
+  /** Opens the grades step when this destination already has links; otherwise the matching step. */
   const goToReview = async (targetScope: MoodleScope, availableBindings: MoodleBinding[], targetSnapshot: MoodleCourseSnapshot | null = snapshot): Promise<void> => {
     const scopedForReview = availableBindings.some((item) =>
       item.connectionId === connection?.id &&
@@ -441,8 +530,9 @@ export function MoodleSettingsPage() {
       setUpdatePreview(updates);
       setUpdateResolutions(Object.fromEntries(updates.rows.map((row) => [row.id, "local"])));
       setGradePreview(grades);
-      setGradeResolutions(Object.fromEntries(grades.rows.map((row) => [row.id, "local"])));
-      setNotice({ tone: "info", text: "Cambios y notas preparados. Revisa cada decisión antes de aplicarla." });
+      setConflictChoices({});
+      setConfirmedNumericActivities(new Set());
+      setNotice({ tone: "info", text: "Notas preparadas. Revísalas antes de importarlas." });
     } catch (error) {
       if (isCurrent(version)) setNotice({ tone: "error", text: errorMessage(error) });
     } finally {
@@ -455,15 +545,17 @@ export function MoodleSettingsPage() {
     const course = courses.find((item) => item.id === Number(courseId));
     if (!client || !course || !connection) return;
     const { version } = beginRequest("snapshot");
-    setNotice({ tone: "info", text: "Leyendo participantes, actividades, notas y entregas disponibles…" });
+    setNotice({ tone: "info", text: "Leyendo participantes, actividades y notas de Moodle…" });
     setSnapshot(null);
+    setSummary(null);
     resetScopeSelection();
     try {
       const nextSnapshot = await client.getCourseSnapshot(course);
       if (!isCurrent(version)) return;
-      setSnapshot(nextSnapshot);
       const savedBindings = await getBindings(connection.id);
       if (!isCurrent(version)) return;
+      // Set together so a restored destination never flashes the destination form first.
+      setSnapshot(nextSnapshot);
       setBindings(savedBindings);
       const persistedScopes = savedBindings.filter((item) => item.kind === "course" && item.courseId === course.id);
       const uniqueScopes = [...new Map(persistedScopes.map((item) => [`${item.remoteGroupId ?? "all"}:${item.classId}:${item.subjectId}`, item])).values()];
@@ -478,7 +570,7 @@ export function MoodleSettingsPage() {
         setSelectedClassId(restoredScope.classId);
         setSelectedSubjectId(restoredScope.subjectId);
         const resolvedScope: MoodleScope = { courseId: course.id, ...(restoredScope.remoteGroupId === undefined ? {} : { remoteGroupId: restoredScope.remoteGroupId }), classId: restoredScope.classId, subjectId: restoredScope.subjectId };
-        setNotice({ tone: nextSnapshot.warnings.length ? "info" : "success", text: nextSnapshot.warnings.length ? `Curso cargado con ${nextSnapshot.warnings.length} aviso(s) de permisos o compatibilidad.` : "Curso y destino anterior recuperados." });
+        setNotice({ tone: nextSnapshot.warnings.length ? "info" : "success", text: nextSnapshot.warnings.length ? `Curso cargado con ${plural(nextSnapshot.warnings.length, "aviso", "avisos")} de Moodle. Revísalos antes de continuar.` : "Curso cargado con el destino que usaste la última vez." });
         if (nextSnapshot.warnings.length === 0) void goToReview(resolvedScope, savedBindings, nextSnapshot);
         else setStep("scope");
         return;
@@ -487,19 +579,19 @@ export function MoodleSettingsPage() {
       setNotice({
         tone: nextSnapshot.warnings.length ? "info" : "success",
         text: nextSnapshot.warnings.length
-          ? `Curso cargado con ${nextSnapshot.warnings.length} aviso(s) de permisos o compatibilidad.`
+          ? `Curso cargado con ${plural(nextSnapshot.warnings.length, "aviso", "avisos")} de Moodle.`
           : persistedScopes.length && uniqueScopes.length === 1
-            ? "Curso cargado, pero su destino local guardado ya no está disponible. Elige otro destino."
+            ? "Curso cargado, pero la clase o materia que usaste antes ya no existe. Elige otra."
             : uniqueScopes.length > 1
-              ? "Curso cargado. Hay varios destinos guardados para este curso; elige el que quieres usar."
-              : "Curso cargado. Elige o crea el destino en Edunoza."
+              ? "Curso cargado. Lo importaste antes a varias clases; elige a cuál quieres traerlo."
+              : "Curso cargado. Elige ahora la clase y la materia de Edunoza."
       });
     } catch (error) {
       if (isCurrent(version)) {
         setSnapshot(null);
         clearPreviews();
         setStep("scope");
-        setNotice({ tone: "error", text: `${errorMessage(error)} No se puede aplicar una revisión anterior; vuelve a cargar el curso.` });
+        setNotice({ tone: "error", text: `${errorMessage(error)} Vuelve a cargar el curso para continuar.` });
       }
     } finally {
       if (isCurrent(version)) setBusy(null);
@@ -511,6 +603,7 @@ export function MoodleSettingsPage() {
     setSelectedCourseId(courseId);
     resetScopeSelection();
     setSnapshot(null);
+    setSummary(null);
     if (courseId) void loadSnapshot(courseId);
   };
 
@@ -518,49 +611,54 @@ export function MoodleSettingsPage() {
     cancelPending();
     setSelectedClassId(classId);
     setSelectedSubjectId(classId === NEW_CLASS_OPTION ? NEW_SUBJECT_OPTION : "");
+    if (classId === NEW_CLASS_OPTION && snapshot) {
+      setNewClassName((current) => current || snapshot.course.shortName);
+      setNewSubjectName((current) => current || snapshot.course.fullName);
+    }
     clearPreviews();
   };
 
-  const buildMappingChoices = (): MoodleMappingChoice[] => [
-    ...scopedRemoteStudents.map((student) => {
-      const existing = scopedBindings.find((item) => item.kind === "student" && item.remoteId === student.id);
-      return { kind: "student" as const, remoteId: student.id, ...(mappingDrafts[mappingKey("student", student.id)] ?? (existing ? { action: "link" as const, localId: existing.localId } : { action: "ignore" as const })) };
-    }),
-    ...(snapshot?.activities ?? []).map((activity) => {
-      const existing = scopedBindings.find((item) => item.kind === "activity" && item.remoteId === activity.id);
-      return { kind: "activity" as const, remoteId: activity.id, ...(mappingDrafts[mappingKey("activity", activity.id)] ?? (existing ? { action: "link" as const, localId: existing.localId } : { action: "ignore" as const })) };
-    })
-  ];
-
-  const checkMappings = async (): Promise<void> => {
-    if (!connection || !snapshot || !scope) return;
-    const { version } = beginRequest("mapping-check");
-    try {
-      const preview = await createMappingPreview(connection.id, snapshot, scope, buildMappingChoices());
-      if (!isCurrent(version)) return;
-      setMappingPreview(preview);
-      setNotice({ tone: "info", text: "Revisión preparada. Aún no se ha cambiado ningún dato local." });
-    } catch (error) {
-      if (isCurrent(version)) setNotice({ tone: "error", text: errorMessage(error) });
-    } finally {
-      if (isCurrent(version)) setBusy(null);
-    }
+  const selectSubject = (subjectId: string): void => {
+    setSelectedSubjectId(subjectId);
+    if (subjectId === NEW_SUBJECT_OPTION && snapshot) setNewSubjectName((current) => current || snapshot.course.fullName);
+    clearPreviews();
   };
 
-  const confirmMappings = async (): Promise<void> => {
-    if (!mappingPreview || !connection || !snapshot || !scope) return;
+  const setDraft = (kind: "student" | "activity", remoteId: number, draft: MappingDraft | undefined): void => {
+    setMappingErrors([]);
+    setMappingDrafts((current) => {
+      const next = { ...current };
+      if (draft) next[mappingKey(kind, remoteId)] = draft;
+      else delete next[mappingKey(kind, remoteId)];
+      return next;
+    });
+  };
+
+  const saveMappings = async (): Promise<void> => {
+    if (!connection || !snapshot || !scope || undecidedCount > 0) return;
+    const choices: MoodleMappingChoice[] = [
+      ...studentRows.map((row) => ({ kind: "student" as const, remoteId: row.student.id, ...(row.decision ?? { action: "ignore" as const }) })),
+      ...gradableActivities.map((activity) => ({ kind: "activity" as const, remoteId: activity.id, ...activityDecision(activity.id) }))
+    ];
     const { controller, version } = beginRequest("mapping-apply");
     try {
-      const nextBindings = await applyMappingPreview(mappingPreview, controller.signal);
+      const preview = await createMappingPreview(connection.id, snapshot, scope, choices);
+      if (!isCurrent(version)) return;
+      const invalid = preview.rows.filter((row) => row.status === "invalid");
+      if (invalid.length) {
+        setMappingErrors(invalid.map((row) => `${row.remoteLabel}: ${row.message ?? "revisa esta elección"}`));
+        setNotice({ tone: "error", text: `No se ha guardado nada: ${plural(invalid.length, "elección necesita", "elecciones necesitan")} revisión.` });
+        return;
+      }
+      const nextBindings = await applyMappingPreview(preview, controller.signal);
       if (!isCurrent(version)) return;
       setBindings(nextBindings);
       await reloadLocalCandidates();
       if (!isCurrent(version)) return;
-      setMappingPreview(null);
       setMappingDrafts({});
       await reloadMetadata(connection.id, version);
       if (!isCurrent(version)) return;
-      setNotice({ tone: "success", text: "Asociaciones guardadas. Los nombres y datos existentes de Edunoza no se han sobrescrito. Preparando cambios y notas…" });
+      setNotice({ tone: "success", text: "Emparejamiento guardado. Preparando las notas…" });
       void goToReview(scope, nextBindings);
     } catch (error) {
       if (isCurrent(version)) setNotice({ tone: "error", text: errorMessage(error) });
@@ -569,10 +667,33 @@ export function MoodleSettingsPage() {
     }
   };
 
-  const reviewChangesAndGrades = async (): Promise<void> => {
-    if (!scope) return;
-    void goToReview(scope, bindings);
+  const activityById = new Map((snapshot?.activities ?? []).map((activity) => [activity.id, activity]));
+  const gradeRows = gradePreview?.rows ?? [];
+  const isNewGrade = (row: MoodleGradePreviewRow) => row.localGrade === null;
+  const isSameGrade = (row: MoodleGradePreviewRow) => row.localGrade !== null && row.localGrade === row.scaledGrade;
+  const isConflict = (row: MoodleGradePreviewRow) => !isNewGrade(row) && !isSameGrade(row);
+  const numericOnlyActivities = [...new Map(gradeRows.filter((row) => row.gradingMethod !== "direct" && !isSameGrade(row))
+    .map((row) => [row.activityId, row])).values()];
+  const finalGradeResolution = (row: MoodleGradePreviewRow): MoodleGradeResolution => {
+    const importResolution: MoodleGradeResolution = row.gradingMethod === "direct" ? "remote" : "numeric-result";
+    if (row.gradingMethod !== "direct" && !confirmedNumericActivities.has(row.activityId)) return "local";
+    if (isNewGrade(row)) return importResolution;
+    if (isSameGrade(row)) return "local";
+    return conflictChoices[row.id] === "remote" ? importResolution : "local";
   };
+  const gradesToImport = gradeRows.filter((row) => finalGradeResolution(row) !== "local");
+  const conflictRows = gradeRows.filter(isConflict);
+  const updatesToApply = (updatePreview?.rows ?? []).filter((row) => updateResolutions[row.id] === "remote").length;
+  const skippedGroups = (() => {
+    const groups = new Map<string, { taskId: string; code: MoodleGradeSkip["code"]; reason: string; count: number }>();
+    for (const skip of gradePreview?.skipped ?? []) {
+      const key = `${skip.taskId}:${skip.code}`;
+      const group = groups.get(key) ?? { taskId: skip.taskId, code: skip.code, reason: skip.reason, count: 0 };
+      group.count += 1;
+      groups.set(key, group);
+    }
+    return [...groups.values()];
+  })();
 
   const applyChangesAndGrades = async (): Promise<void> => {
     if (!connection || !snapshot || !scope) return;
@@ -581,23 +702,41 @@ export function MoodleSettingsPage() {
       const updatesApplied = Boolean(updatePreview?.rows.length);
       if (updatesApplied && updatePreview) await applyUpdates(updatePreview, updateResolutions, controller.signal);
       if (!isCurrent(version)) return;
+      let imported: MoodleGradePreviewRow[] = [];
       if (gradePreview?.rows.length) {
-        // Applying updates just invalidated every preview for this scope (including this
-        // one), even though it only touched name/title fields: re-issue it before applying.
+        // Applying name updates invalidates every preview for this scope: re-issue it first.
         const freshGradePreview = updatesApplied ? await previewGrades(connection.id, snapshot, scope) : gradePreview;
         if (!isCurrent(version)) return;
-        await applyGrades(freshGradePreview, gradeResolutions, controller.signal);
+        const resolutions = Object.fromEntries(freshGradePreview.rows.map((row) => [row.id, finalGradeResolution(row)]));
+        await applyGrades(freshGradePreview, resolutions, controller.signal);
+        imported = freshGradePreview.rows.filter((row) => resolutions[row.id] !== "local");
       }
       if (!isCurrent(version)) return;
+      const counts = new Map<string, number>();
+      for (const row of imported) counts.set(row.taskId, (counts.get(row.taskId) ?? 0) + 1);
+      const [configs, importedTasks] = await Promise.all([
+        db.taskGradebookConfigs.where("[classId+subjectId]").equals([scope.classId, scope.subjectId]).toArray(),
+        db.tasks.bulkGet([...counts.keys()])
+      ]);
+      if (!isCurrent(version)) return;
+      const weightOf = (taskId: string) => Number(configs.find((config) => config.taskId === taskId)?.gradebookWeight ?? 0);
+      const someTaskWeighted = configs.some((config) => Number(config.gradebookWeight ?? 0) > 0);
+      const taskSummaries = [...counts].map(([taskId, count], index) => ({ taskId, title: importedTasks[index]?.title ?? "Tarea", count, weight: weightOf(taskId) }));
       await reloadLocalCandidates();
       if (!isCurrent(version)) return;
-      setUpdatePreview(null);
-      setUpdateResolutions({});
-      setGradePreview(null);
-      setGradeResolutions({});
+      clearPreviews();
       await reloadMetadata(connection.id, version);
       if (!isCurrent(version)) return;
-      setNotice({ tone: "success", text: "Cambios y notas aplicados según tus decisiones. Las demás evaluaciones siguen intactas." });
+      setSummary({
+        classId: scope.classId,
+        subjectId: scope.subjectId,
+        imported: imported.length,
+        updates: updatesToApply,
+        tasks: taskSummaries,
+        unweightedTaskCount: someTaskWeighted ? taskSummaries.filter((item) => item.weight <= 0).length : 0
+      });
+      setStep("done");
+      setNotice({ tone: "success", text: imported.length ? `${plural(imported.length, "nota importada", "notas importadas")} al cuaderno.` : "Importación terminada. No había notas nuevas que traer." });
     } catch (error) {
       if (isCurrent(version)) setNotice({ tone: "error", text: errorMessage(error) });
     } finally {
@@ -635,7 +774,7 @@ export function MoodleSettingsPage() {
       setNewClassLevel("");
       setNewSchoolYear("");
       setNewSubjectName("");
-      setNotice({ tone: "success", text: classIsNew ? "Grupo y materia creados. Revisa ahora cada asociación." : "Materia creada en el grupo existente. Revisa ahora cada asociación." });
+      setNotice({ tone: "success", text: classIsNew ? "Clase y materia creadas. Comprueba ahora el emparejamiento." : "Materia creada. Comprueba ahora el emparejamiento." });
       void goToReview(createdScope, bindings);
     } catch (error) {
       if (isCurrent(version)) setNotice({ tone: "error", text: errorMessage(error) });
@@ -650,13 +789,13 @@ export function MoodleSettingsPage() {
       await forgetConnection(id, controller.signal);
       if (!isCurrent(version)) return;
       const forgotten = connections.find((item) => item.id === id);
-      if (forgotten && !removeMoodleToken(forgotten.server, forgotten.userId)) throw new Error("Se eliminaron las asociaciones, pero no se pudo borrar el token del navegador. Elimínalo desde los datos del sitio.");
+      if (forgotten && !removeMoodleToken(forgotten.server, forgotten.userId)) throw new Error("Se eliminaron los emparejamientos, pero no se pudo borrar el token del navegador. Elimínalo desde los datos del sitio.");
       if (connection?.id === id) disconnect();
       setToken(readMoodleToken(server)?.token ?? "");
       setHasSavedToken(Boolean(readMoodleToken(server)));
       setForgetTarget(null);
       await reloadMetadata();
-      setNotice({ tone: "success", text: "Metadatos de conexión y asociaciones eliminados. No se ha borrado ningún dato académico." });
+      setNotice({ tone: "success", text: "Cuenta olvidada junto con sus emparejamientos. No se ha borrado ningún dato de Edunoza." });
     } catch (error) {
       if (isCurrent(version)) setNotice({ tone: "error", text: errorMessage(error) });
     } finally {
@@ -664,84 +803,39 @@ export function MoodleSettingsPage() {
     }
   };
 
-  const updateMappingDraft = (kind: "student" | "activity", remoteId: number, action: MoodleMappingChoice["action"], localId?: string): void => {
-    setMappingPreview(null);
-    setMappingDrafts((current) => ({ ...current, [mappingKey(kind, remoteId)]: { action, ...(localId ? { localId } : {}) } }));
+  const openGradebook = (classId: string, subjectId: string): void => {
+    dispatch(setSelectedClass(classId));
+    dispatch(setSelectedSubject(subjectId));
+    navigate("/gradebook");
   };
 
-  const bulkSetMappings = (action: "create-pending" | "ignore-pending" | "unlink-existing"): void => {
-    setMappingPreview(null);
-    const next: Record<string, MappingDraft> = { ...mappingDrafts };
-    for (const student of scopedRemoteStudents) {
-      const existing = scopedBindings.find((item) => item.kind === "student" && item.remoteId === student.id);
-      if (action === "unlink-existing" && existing) next[mappingKey("student", student.id)] = { action: "unlink" };
-      else if (action !== "unlink-existing" && !existing) next[mappingKey("student", student.id)] = { action: action === "create-pending" ? "create" : "ignore" };
-    }
-    for (const activity of snapshot?.activities ?? []) {
-      const existing = scopedBindings.find((item) => item.kind === "activity" && item.remoteId === activity.id);
-      if (action === "unlink-existing" && existing) next[mappingKey("activity", activity.id)] = { action: "unlink" };
-      else if (action !== "unlink-existing" && !existing) next[mappingKey("activity", activity.id)] = { action: action === "create-pending" ? "create" : "ignore" };
-    }
-    setMappingDrafts(next);
+  const setAllConflicts = (choice: "local" | "remote"): void => {
+    setConflictChoices(Object.fromEntries(conflictRows.map((row) => [row.id, choice])));
   };
 
-  const linkExactMatches = (): void => {
-    setMappingPreview(null);
-    const next: Record<string, MappingDraft> = { ...mappingDrafts };
-    const studentCandidates = localStudents.map((item) => ({ id: item.id, label: item.fullName }));
-    const taskCandidates = localTasks.map((item) => ({ id: item.id, label: item.title }));
-    for (const student of scopedRemoteStudents) {
-      const key = mappingKey("student", student.id);
-      if (scopedBindings.some((item) => item.kind === "student" && item.remoteId === student.id)) continue;
-      if ((mappingDrafts[key]?.action ?? "ignore") !== "ignore") continue;
-      const match = findExactNameMatch(student.fullName, studentCandidates);
-      if (match) next[key] = { action: "link", localId: match.id };
-    }
-    for (const activity of snapshot?.activities ?? []) {
-      const key = mappingKey("activity", activity.id);
-      if (scopedBindings.some((item) => item.kind === "activity" && item.remoteId === activity.id)) continue;
-      if ((mappingDrafts[key]?.action ?? "ignore") !== "ignore") continue;
-      const match = findExactNameMatch(activity.title, taskCandidates);
-      if (match) next[key] = { action: "link", localId: match.id };
-    }
-    setMappingDrafts(next);
-  };
-
-  const bulkSetResolutions = (resolution: MoodleResolution): void => {
-    if (updatePreview) setUpdateResolutions(Object.fromEntries(updatePreview.rows.map((row) => [row.id, resolution])));
-    if (gradePreview) setGradeResolutions((current) => Object.fromEntries(gradePreview.rows.map((row) => [row.id,
-      resolution === "remote" && row.gradingMethod !== "direct" ? current[row.id] === "numeric-result" ? "numeric-result" : "local" : resolution])));
-  };
+  const importButtonLabel = gradesToImport.length
+    ? `Importar ${plural(gradesToImport.length, "nota", "notas")} al cuaderno`
+    : updatesToApply ? "Aplicar cambios" : "Terminar sin importar notas";
 
   return (
     <article className="management-card moodle-settings-page">
       <header className="moodle-page-heading">
         <div>
-          <h1>Moodle</h1>
-          <p>Consulta Moodle en modo de solo lectura, asocia lo que ya existe y revisa cada cambio local.</p>
+          <h1>Importar de Moodle</h1>
+          <p>Trae alumnado, actividades y notas a tu cuaderno. Edunoza solo lee Moodle: nunca cambia nada allí.</p>
         </div>
-        {connection ? <div className="moodle-actions"><span className="moodle-status connected">Conectado · solo lectura</span><button type="button" className="btn secondary" onClick={disconnect}>Desconectar</button></div> : null}
+        {connection ? <div className="moodle-actions"><span className="moodle-status connected">Conectado a {connection.siteName}</span><button type="button" className="btn secondary" onClick={disconnect}>Desconectar</button></div> : null}
       </header>
 
       <p className={`moodle-notice ${notice.tone}`} role={notice.tone === "error" ? "alert" : "status"} aria-live="polite">{notice.text}</p>
 
-      <MoodleWorkflowStepper steps={steps} activeStep={step} onStepChange={(id) => setStep(id as Step)} label="Pasos para importar datos de Moodle" />
+      {connection ? <MoodleWorkflowStepper steps={steps} activeStep={step} onStepChange={(id) => setStep(id as Step)} label="Pasos para importar datos de Moodle" /> : null}
 
-      {step === "connect" ? (
+      {step === "connect" || !connection ? (
         <section className="detail-section moodle-section" aria-labelledby="moodle-connection-title">
           <div className="moodle-section-heading">
-            <div><h2 id="moodle-connection-title">Conectar cuenta</h2><p>Conserva el token en este navegador, sin guardar las credenciales de acceso.</p></div>
+            <div><h2 id="moodle-connection-title">Conectar cuenta</h2><p>Solo hace falta la primera vez: el token queda guardado en este navegador.</p></div>
           </div>
-          {connection ? (
-            <>
-              <dl className="moodle-connection-facts">
-                <div><dt>Sitio</dt><dd>{connection.siteName}</dd></div>
-                <div><dt>Cuenta</dt><dd>{connection.userName}</dd></div>
-                <div><dt>Dirección</dt><dd>{connection.server}</dd></div>
-              </dl>
-              <div className="moodle-actions"><button type="button" className="btn" onClick={() => setStep("scope")}>Continuar a elegir clase</button></div>
-            </>
-          ) : (
             <form className="moodle-connect-form" onSubmit={connect}>
               <label className="compact-field"><span>Dirección HTTPS</span><input className="input" type="url" required disabled={busy === "connect"} value={server} onChange={(event) => { restorePreviousServer.current = false; setServer(event.target.value); setToken(readMoodleToken(event.target.value)?.token ?? ""); setHasSavedToken(Boolean(readMoodleToken(event.target.value))); }} autoComplete="url" /></label>
               <p className="moodle-step-guidance">Introduce la dirección HTTPS exacta de la instalación de tu centro, incluyendo su ruta si la tiene.</p>
@@ -760,7 +854,6 @@ export function MoodleSettingsPage() {
                 <div className="moodle-actions"><button className="btn" type="submit" disabled={busy === "connect" || (authMode === "token" ? !token.trim() : !username.trim() || !password || !service.trim())}>{busy === "connect" ? "Conectando…" : authMode === "password" ? "Obtener token y conectar" : "Conectar"}</button>{busy === "connect" ? <button type="button" className="btn secondary" onClick={() => cancelPending(true)}>Cancelar</button> : null}</div>
               </> : null}
             </form>
-          )}
           <p>El token se guarda en este navegador al conectar, fuera de las copias de seguridad. No guardamos el usuario de acceso ni la contraseña. Desconectar conserva el token; cualquier persona con acceso a este perfil del navegador podría utilizarlo.</p>
           {hasSavedToken ? <button type="button" className="btn secondary" disabled={Boolean(busy)} onClick={() => {
             if (!removeMoodleToken(server)) { setNotice({ tone: "error", text: "No se pudo borrar el token. Elimínalo desde los datos del sitio en el navegador." }); return; }
@@ -778,8 +871,8 @@ export function MoodleSettingsPage() {
                     setServer(item.server); setPassword(""); setUsername("");
                     const saved = readMoodleToken(item.server, item.userId);
                     setToken(saved?.token ?? ""); setHasSavedToken(Boolean(saved)); setAuthMode("token");
-                    setNotice({ tone: "info", text: saved ? `Token recuperado para ${item.userName}. Pulsa Conectar.` : `Introduce un token de ${item.userName} o utiliza usuario y contraseña. Las asociaciones se recuperarán para esa misma cuenta.` });
-                  }}>Reconectar</button><button type="button" className="moodle-danger-button" onClick={() => setForgetTarget(item.id)}>Olvidar</button></div>{forgetTarget === item.id ? <div className="moodle-confirm" role="alert"><p>Se eliminarán los metadatos, las asociaciones y el token guardado de esta cuenta. Los datos académicos locales no se borrarán.</p><button type="button" className="btn secondary" onClick={() => setForgetTarget(null)}>Conservar</button><button type="button" className="moodle-danger-button solid" disabled={busy === "forget"} onClick={() => void confirmForget(item.id)}>Sí, olvidar</button></div> : null}</li>)}
+                    setNotice({ tone: "info", text: saved ? `Token recuperado para ${item.userName}. Pulsa Conectar.` : `Introduce un token de ${item.userName} o utiliza usuario y contraseña. Los emparejamientos se recuperarán para esa misma cuenta.` });
+                  }}>Reconectar</button><button type="button" className="moodle-danger-button" onClick={() => setForgetTarget(item.id)}>Olvidar</button></div>{forgetTarget === item.id ? <div className="moodle-confirm" role="alert"><p>Se olvidarán esta cuenta, sus emparejamientos y su token guardado. Los datos de Edunoza no se borran.</p><button type="button" className="btn secondary" onClick={() => setForgetTarget(null)}>Conservar</button><button type="button" className="moodle-danger-button solid" disabled={busy === "forget"} onClick={() => void confirmForget(item.id)}>Sí, olvidar</button></div> : null}</li>)}
                 </ul>
               ) : null}
             </>
@@ -795,117 +888,266 @@ export function MoodleSettingsPage() {
 
       {step === "scope" && connection ? (
         <section className="detail-section moodle-section" aria-labelledby="moodle-scope-title">
-          <div className="moodle-section-heading"><div><h2 id="moodle-scope-title">Elegir clase</h2><p>Un grupo de Moodle es opcional. Cambiar el curso descarta las revisiones pendientes.</p></div></div>
-          <form className="moodle-field-stack" onSubmit={confirmScope}>
-            <label className="compact-field"><span>Curso Moodle</span><select value={selectedCourseId} disabled={Boolean(busy)} onChange={(event) => selectCourse(event.target.value)}><option value="">Seleccionar curso</option>{courses.map((course) => <option key={course.id} value={course.id}>{course.fullName} · {course.shortName}</option>)}</select></label>
-            {!courses.length ? <p className="moodle-empty">Esta cuenta no devolvió ningún curso accesible.</p> : null}
-            {busy === "snapshot" ? <p className="moodle-step-guidance">Cargando curso…</p> : null}
-            {snapshot ? <>
-              <div className="moodle-actions"><button type="button" className="btn secondary" disabled={Boolean(busy)} onClick={() => void loadSnapshot(selectedCourseId)}>Actualizar curso</button></div>
-              <label className="compact-field"><span>Grupo Moodle</span><select value={selectedGroupId} onChange={(event) => { setSelectedGroupId(event.target.value); clearPreviews(); }}><option value="">Todo el curso</option>{snapshot.groups.map((group) => <option key={group.id} value={group.id}>{group.name}</option>)}</select></label>
-              <label className="compact-field"><span>Grupo de Edunoza</span><select value={selectedClassId} onChange={(event) => selectClass(event.target.value)}><option value="">Selecciona un grupo</option><option value={NEW_CLASS_OPTION}>+ Crear grupo nuevo</option>{classes.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.schoolYear}</option>)}</select></label>
-              {classIsNew ? <>
-                <label className="compact-field"><span>Nombre del grupo</span><input className="input" required value={newClassName} onChange={(event) => setNewClassName(event.target.value)} /></label>
-                <label className="compact-field"><span>Nivel</span><input className="input" required value={newClassLevel} onChange={(event) => setNewClassLevel(event.target.value)} /></label>
-                <label className="compact-field"><span>Curso escolar</span><input className="input" required pattern="[0-9]{4}-[0-9]{4}" placeholder="2026-2027" value={newSchoolYear} onChange={(event) => setNewSchoolYear(event.target.value)} /></label>
-              </> : null}
-              {selectedClassId ? <label className="compact-field"><span>Materia de Edunoza</span><select value={selectedSubjectId} onChange={(event) => { setSelectedSubjectId(event.target.value); clearPreviews(); }}><option value="">Selecciona una materia</option><option value={NEW_SUBJECT_OPTION}>+ Crear materia nueva</option>{availableSubjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label> : null}
-              {subjectIsNew ? <label className="compact-field"><span>Nombre de la materia</span><input className="input" required value={newSubjectName} onChange={(event) => setNewSubjectName(event.target.value)} /></label> : null}
-              {snapshot.warnings.length ? <details className="moodle-warnings" open><summary>{snapshot.warnings.length} aviso(s) del servidor</summary><ul>{snapshot.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></details> : null}
-              <details className="moodle-capabilities"><summary>Detalles técnicos</summary><ul>{["core_enrol_get_enrolled_users", "core_course_get_contents", "mod_assign_get_assignments", "mod_assign_get_grades", "gradereport_user_get_grade_items", "mod_assign_get_submissions"].map((name) => <li key={name}><span>{capabilityLabel(name)}</span><strong>{connection.functions.includes(name) ? "Disponible" : "No disponible"}</strong></li>)}</ul></details>
-              <div className="moodle-actions moodle-step-actions"><button className="btn" type="submit" disabled={!scopeReady || Boolean(busy)}>{busy === "scope-create" ? "Creando…" : "Continuar a revisión"}</button></div>
-            </> : null}
+          {previousImports.length && !snapshot && busy !== "snapshot" ? (
+            <div className="moodle-callout">
+              <ul className="moodle-previous-list">
+                {previousImports.map((item) => (
+                  <li key={item.id}>
+                    <div><strong>Ya importaste «{item.remoteLabel}» a {className(item.classId)} · {subjectName(item.subjectId)}</strong><span>Trae solo lo nuevo sin repetir el emparejamiento.</span></div>
+                    <button type="button" className="btn" disabled={Boolean(busy)} onClick={() => selectCourse(String(item.courseId))} aria-label={`Traer novedades de ${item.remoteLabel}`}>Traer novedades</button>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <div className="moodle-section-heading"><div><h2 id="moodle-scope-title">¿Qué quieres traer y a dónde?</h2><p>Elige un curso de Moodle y la clase de Edunoza en la que quieres sus notas.</p></div></div>
+          <form className="moodle-route-form" onSubmit={confirmScope}>
+            <div className="moodle-route">
+              <fieldset className="moodle-route-side">
+                <legend>Desde Moodle</legend>
+                <label className="compact-field"><span>Curso de Moodle</span><select value={selectedCourseId} disabled={Boolean(busy) && busy !== "snapshot"} onChange={(event) => selectCourse(event.target.value)}><option value="">Elige un curso</option>{courses.map((course) => <option key={course.id} value={course.id}>{course.fullName}</option>)}</select></label>
+                {!courses.length ? <p className="moodle-empty">Esta cuenta no devolvió ningún curso accesible.</p> : null}
+                {busy === "snapshot" ? <p className="moodle-step-guidance">Leyendo el curso…</p> : null}
+                {snapshot ? <label className="compact-field"><span>Grupo de Moodle (opcional)</span><select value={selectedGroupId} onChange={(event) => { setSelectedGroupId(event.target.value); clearPreviews(); }}><option value="">Todo el curso · {snapshot.students.length} participantes</option>{snapshot.groups.map((group) => <option key={group.id} value={group.id}>{group.name} · {group.memberIds.length}</option>)}</select></label> : null}
+              </fieldset>
+              <span className="moodle-route-arrow" aria-hidden="true">→</span>
+              <fieldset className="moodle-route-side" disabled={!snapshot}>
+                <legend>A Edunoza</legend>
+                <label className="compact-field"><span>Clase de Edunoza</span><select value={selectedClassId} onChange={(event) => selectClass(event.target.value)}><option value="">Elige una clase</option>{classes.map((item) => <option key={item.id} value={item.id}>{item.name} · {item.schoolYear}</option>)}<option value={NEW_CLASS_OPTION}>+ Crear una clase nueva</option></select></label>
+                {classIsNew ? <>
+                  <label className="compact-field"><span>Nombre de la clase</span><input className="input" required value={newClassName} onChange={(event) => setNewClassName(event.target.value)} /></label>
+                  <label className="compact-field"><span>Nivel</span><input className="input" required placeholder="1º ESO" value={newClassLevel} onChange={(event) => setNewClassLevel(event.target.value)} /></label>
+                  <label className="compact-field"><span>Curso escolar</span><input className="input" required pattern="[0-9]{4}-[0-9]{4}" placeholder="2026-2027" value={newSchoolYear} onChange={(event) => setNewSchoolYear(event.target.value)} /></label>
+                </> : null}
+                {selectedClassId ? <label className="compact-field"><span>Materia de Edunoza</span><select value={selectedSubjectId} onChange={(event) => selectSubject(event.target.value)}><option value="">Elige una materia</option>{availableSubjects.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}<option value={NEW_SUBJECT_OPTION}>+ Crear una materia nueva</option></select></label> : null}
+                {subjectIsNew ? <label className="compact-field"><span>Nombre de la materia</span><input className="input" required value={newSubjectName} onChange={(event) => setNewSubjectName(event.target.value)} /></label> : null}
+              </fieldset>
+            </div>
+            {snapshot?.warnings.length ? <details className="moodle-warnings" open><summary>{plural(snapshot.warnings.length, "aviso", "avisos")} de Moodle</summary><ul>{snapshot.warnings.map((warning) => <li key={warning}>{warning}</li>)}</ul></details> : null}
+            <div className="moodle-actions moodle-step-actions">
+              <button className="btn" type="submit" disabled={!scopeReady || Boolean(busy)}>{busy === "scope-create" ? "Creando…" : "Continuar"}</button>
+              {snapshot ? <button type="button" className="btn secondary" disabled={Boolean(busy)} onClick={() => void loadSnapshot(selectedCourseId)}>Actualizar curso</button> : null}
+            </div>
+            {snapshot ? <details className="moodle-capabilities"><summary>Detalles técnicos</summary><ul>{["core_enrol_get_enrolled_users", "core_course_get_contents", "mod_assign_get_assignments", "mod_assign_get_grades", "gradereport_user_get_grade_items", "mod_assign_get_submissions"].map((name) => <li key={name}><span>{capabilityLabel(name)}</span><strong>{connection.functions.includes(name) ? "Disponible" : "No disponible"}</strong></li>)}</ul></details> : null}
           </form>
         </section>
       ) : null}
 
       {(step === "link" || step === "apply") && connection && snapshot && scope ? (
-        <p className="moodle-workflow-context"><strong>Ámbito actual:</strong> {snapshot.course.fullName} → {classes.find((item) => item.id === scope.classId)?.name ?? "Grupo local"} · {subjects.find((item) => item.id === scope.subjectId)?.name ?? "Materia local"}</p>
+        <p className="moodle-workflow-context"><strong>{snapshot.course.fullName}</strong> → {className(scope.classId)} · {subjectName(scope.subjectId)}</p>
       ) : null}
 
       {step === "link" && connection && snapshot && scope ? (
         <section className="detail-section moodle-section" aria-labelledby="moodle-mapping-title">
-          <div className="moodle-section-heading"><div><h2 id="moodle-mapping-title">Alumnado y actividades</h2><p>Los nombres son solo sugerencias visuales: ninguna coincidencia se aplica automáticamente.</p></div></div>
-          <div className="moodle-actions">
-            {exactMatchCount > 0 ? <button type="button" className="btn" disabled={Boolean(busy)} onClick={linkExactMatches}>Vincular {exactMatchCount} coincidencia{exactMatchCount === 1 ? "" : "s"} exacta{exactMatchCount === 1 ? "" : "s"}</button> : null}
-            <button type="button" className="btn secondary" disabled={Boolean(busy)} onClick={() => bulkSetMappings("create-pending")}>Crear todo lo pendiente</button>
-            <button type="button" className="btn secondary" disabled={Boolean(busy)} onClick={() => bulkSetMappings("ignore-pending")}>Ignorar todo lo pendiente</button>
-            {hasScopedLinks ? <button type="button" className="btn secondary" disabled={Boolean(busy)} onClick={() => bulkSetMappings("unlink-existing")}>Quitar todas las asociaciones</button> : null}
+          <div className="moodle-section-heading"><div><h2 id="moodle-mapping-title">Comprueba el emparejamiento</h2><p>Lo que coincide exactamente por nombre ya está emparejado. Revisa solo lo que aparece aquí; nada se guarda hasta que pulses «Guardar».</p></div></div>
+
+          <div className="moodle-mapping-block">
+            <div className="moodle-block-heading">
+              <h3>Alumnado · {scopedRemoteStudents.length}</h3>
+              <div className="moodle-tags">
+                {linkedStudentCount ? <span className="moodle-tag ok">{plural(linkedStudentCount, "emparejado", "emparejados")}</span> : null}
+                {newStudentCount ? <span className="moodle-tag info">{plural(newStudentCount, "nuevo", "nuevos")}</span> : null}
+                {undecidedCount ? <span className="moodle-tag warn">{undecidedCount} por decidir</span> : null}
+              </div>
+            </div>
+            {attentionStudentRows.length ? <div className="moodle-mapping-list">{attentionStudentRows.map(({ student, decision, binding }) => (
+              <StudentRow key={student.id} label={student.fullName} decision={decision} hasBinding={Boolean(binding)} candidates={localStudents} onChange={(draft) => setDraft("student", student.id, draft)} />
+            ))}</div> : null}
+            {matchedStudentRows.length ? <details className="moodle-mapping-group"><summary>Ver {plural(matchedStudentRows.length, "alumno emparejado", "alumnos emparejados")}</summary><div className="moodle-mapping-list">{matchedStudentRows.map(({ student, decision, binding }) => (
+              <StudentRow key={student.id} label={student.fullName} decision={decision} hasBinding={Boolean(binding)} candidates={localStudents} onChange={(draft) => setDraft("student", student.id, draft)} />
+            ))}</div></details> : null}
+            {!scopedRemoteStudents.length ? <p className="moodle-empty">Moodle no devolvió participantes para este curso o grupo.</p> : null}
           </div>
-          <details className="moodle-mapping-group" open><summary>Participantes · {scopedRemoteStudents.length}</summary>{scopedRemoteStudents.length ? <div className="moodle-mapping-list">{scopedRemoteStudents.map((student) => <MappingRow key={student.id} kind="student" remoteId={student.id} label={student.fullName} candidates={localStudents.map((item) => ({ id: item.id, label: item.fullName }))} binding={scopedBindings.find((item) => item.kind === "student" && item.remoteId === student.id)} draft={mappingDrafts[mappingKey("student", student.id)]} onChange={updateMappingDraft} />)}</div> : <p className="moodle-empty">No hay participantes en este ámbito.</p>}</details>
-          <details className="moodle-mapping-group" open><summary>Actividades evaluables · {assignmentActivities.length}</summary>{assignmentActivities.length ? <div className="moodle-mapping-list">{assignmentActivities.map((activity) => <MappingRow key={activity.id} kind="activity" remoteId={activity.id} label={activity.title} candidates={localTasks.map((item) => ({ id: item.id, label: item.title }))} binding={scopedBindings.find((item) => item.kind === "activity" && item.remoteId === activity.id)} draft={mappingDrafts[mappingKey("activity", activity.id)]} onChange={updateMappingDraft} />)}</div> : <p className="moodle-empty">No hay actividades evaluables en este curso de Moodle.</p>}</details>
-          <details className="moodle-mapping-group"><summary>Otros recursos de Moodle (sin notas numéricas) · {otherActivities.length}</summary><p className="moodle-step-guidance">Páginas, etiquetas y otros recursos sin calificación numérica: puedes vincularlos como referencia, pero no tienen notas que importar.</p>{otherActivities.length ? <div className="moodle-mapping-list">{otherActivities.map((activity) => <MappingRow key={activity.id} kind="activity" remoteId={activity.id} label={activity.title} candidates={localTasks.map((item) => ({ id: item.id, label: item.title }))} binding={scopedBindings.find((item) => item.kind === "activity" && item.remoteId === activity.id)} draft={mappingDrafts[mappingKey("activity", activity.id)]} onChange={updateMappingDraft} />)}</div> : <p className="moodle-empty">No hay otros recursos en este curso de Moodle.</p>}</details>
-          <div className="moodle-actions">
-            <button type="button" className="btn" disabled={Boolean(busy)} onClick={() => void checkMappings()}>Comprobar asociaciones</button>
-            {mappingPreview ? <button type="button" className="btn" disabled={Boolean(busy) || mappingPreview.rows.some((row) => row.status === "invalid")} onClick={() => void confirmMappings()}>Guardar {mappingPreview.rows.length} asociación(es)</button> : null}
+
+          <div className="moodle-mapping-block">
+            <div className="moodle-block-heading">
+              <h3>Actividades con nota · {gradableActivities.length}</h3>
+              <span className="moodle-step-guidance">Las marcadas entran en el cuaderno como tareas.</span>
+            </div>
+            {gradableActivities.length ? <div className="moodle-mapping-list">{gradableActivities.map((activity) => (
+              <ActivityRow key={activity.id} activity={activity} decision={activityDecision(activity.id)} hasBinding={Boolean(bindingFor("activity", activity.id))} candidates={localTasks} onChange={(draft) => setDraft("activity", activity.id, draft)} />
+            ))}</div> : <p className="moodle-empty">Este curso de Moodle no tiene actividades con nota.</p>}
+            {otherActivities.length ? <p className="moodle-step-guidance">{plural(otherActivities.length, "recurso sin nota (apuntes, enlaces…) no se importa", "recursos sin nota (apuntes, enlaces…) no se importan")}.</p> : null}
           </div>
-          {!mappingPreview && Object.keys(mappingDrafts).length > 0 ? <p className="moodle-step-guidance">Pulsa <strong>«Comprobar asociaciones»</strong> para preparar y poder guardar los cambios que has marcado arriba. Nada se guarda hasta que pulses «Guardar».</p> : null}
-          {mappingPreview ? <div className="moodle-preview" role="region" aria-label="Vista previa de asociaciones"><p><strong>Aún sin guardar.</strong> Revisa estas decisiones:</p><ul>{mappingPreview.rows.map((row) => <li key={`${row.kind}:${row.remoteId}`}><span>{row.remoteLabel}</span><span>{row.localLabel ?? mappingActionLabel(row.choice.action)}</span><strong className={row.status === "invalid" ? "invalid" : "ready"}>{row.message ?? (row.status === "ready" ? "Preparada" : "Revisar")}</strong></li>)}</ul></div> : null}
-          {hasScopedLinks ? <div className="moodle-actions"><button type="button" className="btn" disabled={Boolean(busy)} onClick={() => void reviewChangesAndGrades()}>Continuar a revisar cambios y notas</button></div> : null}
+
+          {mappingErrors.length ? <div className="moodle-warnings" role="alert"><ul>{mappingErrors.map((message) => <li key={message}>{message}</li>)}</ul></div> : null}
+          <div className="moodle-actions moodle-footer-actions">
+            <button type="button" className="btn secondary" disabled={Boolean(busy)} onClick={() => setStep("scope")}>Atrás</button>
+            <span className="moodle-footer-spacer" />
+            {undecidedCount ? <span className="moodle-pending-note">Falta{undecidedCount === 1 ? "" : "n"} {plural(undecidedCount, "decisión", "decisiones")}</span> : null}
+            <button type="button" className="btn" disabled={Boolean(busy) || undecidedCount > 0} onClick={() => void saveMappings()}>{busy === "mapping-apply" ? "Guardando…" : "Guardar y ver notas"}</button>
+          </div>
         </section>
       ) : null}
 
       {step === "apply" && connection && snapshot && scope ? (
         <section className="detail-section moodle-section" aria-labelledby="moodle-review-title">
-          <div className="moodle-section-heading"><div><h2 id="moodle-review-title">Cambios y notas</h2><p>Las notas se convierten explícitamente a 0–10. Edunoza no modifica Moodle.</p></div></div>
-          {!hasScopedLinks ? <p className="moodle-empty">Vincula primero alumnado o actividades para poder revisar sus cambios y notas.</p> : (
-            <>
-              <div className="moodle-actions">
-                <button type="button" className="btn secondary" disabled={Boolean(busy)} onClick={() => void reviewChangesAndGrades()}>Revisar cambios y notas</button>
-                {(updatePreview || gradePreview) ? <>
-                  <button type="button" className="btn secondary" disabled={Boolean(busy)} onClick={() => bulkSetResolutions("local")}>Mantener todo Edunoza</button>
-                  <button type="button" className="btn secondary" disabled={Boolean(busy)} onClick={() => bulkSetResolutions("remote")}>Usar todo Moodle</button>
-                </> : null}
+          <div className="moodle-section-heading"><div><h2 id="moodle-review-title">Revisa las notas antes de importarlas</h2><p>Se pasan a escala 0–10. Solo tienes que decidir cuando no coinciden con las tuyas.</p></div></div>
+          {unlinkedRemoteCount ? <div className="moodle-callout"><span>Hay {plural(unlinkedRemoteCount, "alumno o actividad nueva", "alumnos o actividades nuevas")} en Moodle sin emparejar; sus notas no aparecen aquí.</span><button type="button" className="btn secondary" disabled={Boolean(busy)} onClick={() => setStep("link")}>Emparejar</button></div> : null}
+          {busy === "review-preview" ? <p className="moodle-step-guidance">Preparando las notas…</p> : null}
+          {gradePreview ? <>
+            <div className="moodle-stats" role="list" aria-label="Resumen de notas">
+              <div role="listitem" className="moodle-stat"><strong>{gradeRows.filter(isNewGrade).length}</strong><span>Nuevas</span></div>
+              <div role="listitem" className="moodle-stat"><strong>{gradeRows.filter(isSameGrade).length}</strong><span>Iguales, sin cambios</span></div>
+              <div role="listitem" className={`moodle-stat${conflictRows.length ? " warn" : ""}`}><strong>{conflictRows.length}</strong><span>Distintas a las tuyas</span></div>
+              <div role="listitem" className="moodle-stat"><strong>{gradePreview.skipped.length}</strong><span>No se pueden importar</span></div>
+            </div>
+
+            {conflictRows.length ? (
+              <div className="moodle-mapping-block warn">
+                <div className="moodle-block-heading">
+                  <h3>{plural(conflictRows.length, "nota distinta a la tuya", "notas distintas a las tuyas")}</h3>
+                  <div className="moodle-actions"><span className="moodle-step-guidance">Para todas:</span><button type="button" className="btn secondary" disabled={Boolean(busy)} onClick={() => setAllConflicts("local")}>Mantener las mías</button><button type="button" className="btn secondary" disabled={Boolean(busy)} onClick={() => setAllConflicts("remote")}>Usar Moodle</button></div>
+                </div>
+                <div className="moodle-mapping-list">{conflictRows.map((row) => {
+                  const useMoodle = conflictChoices[row.id] === "remote";
+                  const studentName = students.find((item) => item.id === row.studentId)?.fullName ?? "Participante";
+                  return <div key={row.id} className="moodle-conflict-row">
+                    <div><strong>{studentName}</strong><span>{tasks.find((item) => item.id === row.taskId)?.title ?? "Tarea"}</span></div>
+                    <span>Tuya <strong>{formatGrade(row.localGrade)}</strong> · Moodle <strong>{formatGrade(row.scaledGrade)}</strong> <small>({gradeFormatter.format(row.remoteGrade)}/{gradeFormatter.format(row.gradeMax)})</small></span>
+                    <div className="moodle-segmented" role="group" aria-label={`Nota para ${studentName}`}>
+                      <button type="button" aria-pressed={!useMoodle} onClick={() => setConflictChoices((current) => ({ ...current, [row.id]: "local" }))}>Mantener {formatGrade(row.localGrade)}</button>
+                      <button type="button" aria-pressed={useMoodle} onClick={() => setConflictChoices((current) => ({ ...current, [row.id]: "remote" }))}>Usar {formatGrade(row.scaledGrade)}</button>
+                    </div>
+                  </div>;
+                })}</div>
               </div>
-              {updatePreview ? updatePreview.rows.length ? <div className="moodle-resolution-list">{updatePreview.rows.map((row) => <fieldset key={row.id}><legend>{row.kind === "student" ? "Participante" : "Actividad"} · {fieldLabel(row.field)}{row.conflict ? " · Conflicto" : ""}</legend><label><input type="radio" name={`update-${row.id}`} checked={updateResolutions[row.id] === "local"} onChange={() => setUpdateResolutions((current) => ({ ...current, [row.id]: "local" }))} /><span><strong>Conservar Edunoza</strong><small>{String(row.localValue ?? "Vacío")}</small></span></label><label><input type="radio" name={`update-${row.id}`} checked={updateResolutions[row.id] === "remote"} onChange={() => setUpdateResolutions((current) => ({ ...current, [row.id]: "remote" }))} /><span><strong>Usar Moodle</strong><small>{String(row.sourceValue ?? "Vacío")}</small></span></label></fieldset>)}</div> : <p className="moodle-empty">No hay cambios pendientes en los campos compatibles.</p> : null}
-              {gradePreview?.rows.some((row) => row.gradingMethod !== "direct") ? <p>Las notas con rúbrica, guía o método sin comprobar se eligen individualmente. «Usar todo Moodle» no las selecciona.</p> : null}
-              {gradePreview ? gradePreview.rows.length ? <div className="moodle-grade-list">{gradePreview.rows.map((row) => {
-                const numericResultOnly = row.gradingMethod !== "direct";
-                const importResolution: MoodleGradeResolution = numericResultOnly ? "numeric-result" : "remote";
-                return <fieldset key={row.id}>
-                  <legend>{tasks.find((item) => item.id === row.taskId)?.title ?? "Actividad"} · {students.find((item) => item.id === row.studentId)?.fullName ?? "Participante"}</legend>
-                  <p>Moodle: {row.remoteGrade} / {row.gradeMax} → {row.scaledGrade} / 10 · Edunoza: {row.localGrade ?? "sin nota"}</p>
-                  {numericResultOnly ? <p>{row.gradingMethod === "advanced" ? "Esta tarea usa una rúbrica o guía en Moodle." : "No se ha podido comprobar el método de evaluación en Moodle."} Solo se copiará el resultado numérico de la tarea, sin criterios ni niveles de evaluación.</p> : null}
-                  <label><input type="radio" name={`grade-${row.id}`} checked={gradeResolutions[row.id] === "local"} onChange={() => setGradeResolutions((current) => ({ ...current, [row.id]: "local" }))} /> Conservar Edunoza</label>
-                  <label><input type="radio" name={`grade-${row.id}`} checked={gradeResolutions[row.id] === importResolution} onChange={() => setGradeResolutions((current) => ({ ...current, [row.id]: importResolution }))} /> {numericResultOnly ? "Importar solo resultado numérico" : "Importar Moodle"}</label>
-                </fieldset>;
-              })}</div> : <p className="moodle-empty">No hay notas vinculadas y compatibles para importar.</p> : null}
-              {gradePreview?.skipped.length ? <details className="moodle-warnings" open><summary>{gradePreview.skipped.length} nota(s) de Moodle no importable(s)</summary><ul>{gradePreview.skipped.map((skip) => <li key={`${skip.activityId}:${skip.userId}`}><strong>{tasks.find((item) => item.id === skip.taskId)?.title ?? "Actividad"} · {students.find((item) => item.id === skip.studentId)?.fullName ?? "Participante"}:</strong> {skip.reason}</li>)}</ul></details> : null}
-              {(updatePreview?.rows.length || gradePreview?.rows.length) ? <div className="moodle-actions"><button type="button" className="btn" disabled={Boolean(busy)} onClick={() => void applyChangesAndGrades()}>Aplicar cambios y notas</button></div> : null}
-            </>
-          )}
-          <SubmissionSummary snapshot={snapshot} />
+            ) : null}
+
+            {numericOnlyActivities.length ? (
+              <div className="moodle-mapping-block">
+                <h3>Actividades corregidas con rúbrica o guía</h3>
+                <p className="moodle-step-guidance">Edunoza solo puede traer la nota final, sin criterios ni niveles. Confírmalo una vez por actividad.</p>
+                {numericOnlyActivities.map((row) => {
+                  const title = activityById.get(row.activityId)?.title ?? "Actividad";
+                  const count = gradeRows.filter((item) => item.activityId === row.activityId && !isSameGrade(item)).length;
+                  return <label key={row.activityId} className="moodle-check">
+                    <input type="checkbox" checked={confirmedNumericActivities.has(row.activityId)} onChange={(event) => setConfirmedNumericActivities((current) => {
+                      const next = new Set(current);
+                      if (event.target.checked) next.add(row.activityId); else next.delete(row.activityId);
+                      return next;
+                    })} />
+                    <span>{title}: importar solo la nota final ({plural(count, "nota", "notas")}){row.gradingMethod === "unknown" ? ". No se pudo comprobar cómo se corrige en Moodle." : ""}</span>
+                  </label>;
+                })}
+              </div>
+            ) : null}
+
+            {updatePreview?.rows.length ? (
+              <div className="moodle-mapping-block">
+                <h3>Nombres que han cambiado en Moodle</h3>
+                <div className="moodle-resolution-list">{updatePreview.rows.map((row) => <fieldset key={row.id}><legend>{row.kind === "student" ? "Alumno" : "Actividad"} · {fieldLabel(row.field)}</legend><label><input type="radio" name={`update-${row.id}`} checked={updateResolutions[row.id] === "local"} onChange={() => setUpdateResolutions((current) => ({ ...current, [row.id]: "local" }))} /><span><strong>Mantener Edunoza</strong><small>{String(row.localValue ?? "Vacío")}</small></span></label><label><input type="radio" name={`update-${row.id}`} checked={updateResolutions[row.id] === "remote"} onChange={() => setUpdateResolutions((current) => ({ ...current, [row.id]: "remote" }))} /><span><strong>Usar Moodle</strong><small>{String(row.sourceValue ?? "Vacío")}</small></span></label></fieldset>)}</div>
+              </div>
+            ) : null}
+
+            {skippedGroups.length ? (
+              <div className="moodle-mapping-block">
+                <h3>{plural(gradePreview.skipped.length, "nota que no entra", "notas que no entran")}, y cómo arreglarlo</h3>
+                <ul className="moodle-skip-list">{skippedGroups.map((group) => (
+                  <li key={`${group.taskId}:${group.code}`}>
+                    <span><strong>{tasks.find((item) => item.id === group.taskId)?.title ?? "Tarea"}</strong> · {plural(group.count, "nota", "notas")}. {group.reason}</span>
+                    {group.code === "instrument" ? <button type="button" className="moodle-text-button" onClick={() => openGradebook(scope.classId, scope.subjectId)}>Cambiar a nota directa en el cuaderno</button> : null}
+                    {group.code === "closed-period" ? <Link to="/management/periods">Ver evaluaciones</Link> : null}
+                  </li>
+                ))}</ul>
+              </div>
+            ) : null}
+
+            {!gradeRows.length && !updatePreview?.rows.length ? <p className="moodle-empty">No hay notas nuevas en Moodle para lo que tienes emparejado.</p> : null}
+
+            <div className="moodle-actions moodle-footer-actions">
+              <button type="button" className="btn secondary" disabled={Boolean(busy)} onClick={() => setStep("link")}>Atrás</button>
+              <span className="moodle-footer-spacer" />
+              <span className="moodle-pending-note neutral">Moodle no se modifica</span>
+              <button type="button" className="btn" disabled={Boolean(busy)} onClick={() => void applyChangesAndGrades()}>{busy === "review-apply" ? "Importando…" : importButtonLabel}</button>
+            </div>
+          </> : null}
+          <details className="moodle-help">
+            <summary>Entregas leídas en Moodle</summary>
+            <SubmissionSummary snapshot={snapshot} />
+          </details>
+        </section>
+      ) : null}
+
+      {step === "done" && summary ? (
+        <section className="detail-section moodle-section moodle-done" aria-labelledby="moodle-done-title">
+          <div>
+            <h2 id="moodle-done-title">{summary.imported ? `${plural(summary.imported, "nota ya está", "notas ya están")} en el cuaderno` : "Importación terminada"}</h2>
+            <p>{className(summary.classId)} · {subjectName(summary.subjectId)}{summary.updates ? `. También se ${summary.updates === 1 ? "actualizó 1 nombre" : `actualizaron ${summary.updates} nombres`}.` : "."}</p>
+          </div>
+          {summary.tasks.length ? (
+            <table className="moodle-done-table">
+              <thead><tr><th scope="col">Tarea</th><th scope="col">Notas</th><th scope="col">Peso</th></tr></thead>
+              <tbody>{summary.tasks.map((item) => <tr key={item.taskId}><td>{item.title}</td><td>{item.count}</td><td className={item.weight > 0 ? "" : "warn"}>{item.weight > 0 ? gradeFormatter.format(item.weight) : "Sin peso"}</td></tr>)}</tbody>
+            </table>
+          ) : null}
+          {summary.unweightedTaskCount ? (
+            <div className="moodle-callout warn">
+              <span><strong>{summary.unweightedTaskCount === 1 ? "1 tarea aún no cuenta en la media." : `${summary.unweightedTaskCount} tareas aún no cuentan en la media.`}</strong> Tiene{summary.unweightedTaskCount === 1 ? "" : "n"} peso 0 y otras tareas sí tienen peso. Dale{summary.unweightedTaskCount === 1 ? "" : "s"} un peso en el cuaderno.</span>
+            </div>
+          ) : null}
+          <div className="moodle-actions">
+            <button type="button" className="btn" onClick={() => openGradebook(summary.classId, summary.subjectId)}>Abrir el cuaderno</button>
+            <button type="button" className="btn secondary" onClick={() => { setSummary(null); setSelectedCourseId(""); setSnapshot(null); resetScopeSelection(); setStep("scope"); }}>Importar otro curso</button>
+          </div>
+          <p className="moodle-step-guidance">La próxima vez, «Traer novedades» importa solo lo nuevo de este curso sin repetir el emparejamiento.</p>
         </section>
       ) : null}
 
       <section className="detail-section moodle-section" aria-labelledby="moodle-operations-title">
         <details className="moodle-help">
-          <summary id="moodle-operations-title">Operaciones recientes</summary>
-          {operations.length ? <ol className="moodle-operation-list">{operations.map((operation) => <li key={operation.id}><div><strong>{operation.summary}</strong><span>{operation.count} elemento(s) · {operationKindLabel(operation.kind)}</span></div><time dateTime={operation.createdAt}>{formatDate(operation.createdAt)}</time></li>)}</ol> : <p className="moodle-empty">Todavía no hay operaciones Moodle registradas.</p>}
+          <summary id="moodle-operations-title">Importaciones recientes</summary>
+          {operations.length ? <ol className="moodle-operation-list">{operations.map((operation) => <li key={operation.id}><div><strong>{operation.summary}</strong><span>{operation.count} elemento(s) · {operationKindLabel(operation.kind)}</span></div><time dateTime={operation.createdAt}>{formatDate(operation.createdAt)}</time></li>)}</ol> : <p className="moodle-empty">Todavía no has importado nada de Moodle.</p>}
         </details>
       </section>
     </article>
   );
 }
 
-function MappingRow({ kind, remoteId, label, candidates, binding, draft, onChange }: { kind: "student" | "activity"; remoteId: number; label: string; candidates: Array<{ id: string; label: string }>; binding?: MoodleBinding; draft?: MappingDraft; onChange: (kind: "student" | "activity", remoteId: number, action: MoodleMappingChoice["action"], localId?: string) => void }) {
-  const action = draft?.action ?? (binding ? "link" : "ignore");
-  const localId = draft?.localId ?? binding?.localId ?? "";
-  const linkedLabel = candidates.find((candidate) => candidate.id === binding?.localId)?.label;
-  const suggestion = !binding ? findExactNameMatch(label, candidates) : undefined;
-  const status = binding
-    ? <span>Vinculado a {linkedLabel ?? "un registro local no disponible"}</span>
-    : action === "ignore" && suggestion
-      ? <span className="moodle-mapping-suggestion">Coincidencia: {suggestion.label} <button type="button" className="moodle-text-button" aria-label={`Usar la coincidencia ${suggestion.label} para ${label}`} onClick={() => onChange(kind, remoteId, "link", suggestion.id)}>Usar</button></span>
-      : null;
-  return <div className="moodle-mapping-row"><div><strong>{label}</strong>{status}</div><label><span className="sr-only">Decisión para {label}</span><select value={action} onChange={(event) => { const nextAction = event.target.value as MoodleMappingChoice["action"]; onChange(kind, remoteId, nextAction, nextAction === "link" ? localId : undefined); }}><option value="ignore">Ignorar</option><option value="link">{binding ? "Mantener o cambiar vínculo" : "Vincular existente"}</option><option value="create">Crear nuevo en Edunoza</option>{binding ? <option value="unlink">Quitar asociación</option> : null}</select></label>{action === "link" ? <label><span className="sr-only">Registro local para {label}</span><select required value={localId} onChange={(event) => onChange(kind, remoteId, "link", event.target.value)}><option value="">Seleccionar registro local</option>{candidates.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}</select></label> : (action === "create" || action === "unlink") ? <span className="moodle-mapping-note">{action === "create" ? "Se creará al guardar" : "El registro local se conserva"}</span> : <span />}</div>;
+function StudentRow({ label, decision, hasBinding, candidates, onChange }: { label: string; decision: MappingDecision; hasBinding: boolean; candidates: Student[]; onChange: (draft: MappingDraft | undefined) => void }) {
+  const linked = decision?.action === "link" ? candidates.find((item) => item.id === decision.localId) : undefined;
+  const status = decision === null
+    ? <span className="moodle-tag warn">Por decidir</span>
+    : decision.action === "create" ? <span className="moodle-tag info">Nuevo</span>
+      : decision.action === "link" ? <span className="moodle-tag ok">Emparejado</span>
+        : <span className="moodle-tag">No se importa</span>;
+  return <div className={`moodle-mapping-row${decision === null ? " pending" : ""}`}>
+    <div><strong>{label}</strong><span>{decision === null ? "Hay alumnos en la clase que podrían ser esta persona" : linked ? `En Edunoza: ${linked.fullName}` : decision.action === "create" ? "Se creará en la clase" : ""}</span></div>
+    <label><span className="sr-only">Alumno de Edunoza para {label}</span>
+      <select value={encodeDecision(decision)} onChange={(event) => onChange(decodeDecision(event.target.value))}>
+        {decision === null ? <option value="">Elige…</option> : null}
+        <optgroup label="Emparejar con">{candidates.map((item) => <option key={item.id} value={`link:${item.id}`}>{item.fullName}</option>)}</optgroup>
+        <option value="create">Crear alumno nuevo</option>
+        <option value="ignore">No importar</option>
+        {hasBinding ? <option value="unlink">Quitar emparejamiento</option> : null}
+      </select>
+    </label>
+    {status}
+  </div>;
+}
+
+function ActivityRow({ activity, decision, hasBinding, candidates, onChange }: { activity: MoodleActivity; decision: MappingDraft; hasBinding: boolean; candidates: Task[]; onChange: (draft: MappingDraft | undefined) => void }) {
+  const included = decision.action === "link" || decision.action === "create";
+  const target = decision.action === "link" ? `link:${decision.localId ?? ""}` : "create";
+  return <div className="moodle-mapping-row">
+    <div>
+      <strong>{activity.title}</strong>
+      <span className="moodle-tags"><span className="moodle-tag">{moduleLabel(activity.module)}</span>{activity.advancedGrading ? <span className="moodle-tag accent">Rúbrica en Moodle</span> : null}</span>
+    </div>
+    <label><span className="sr-only">Tarea de Edunoza para {activity.title}</span>
+      <select value={included ? target : "create"} disabled={!included} onChange={(event) => onChange(decodeDecision(event.target.value))}>
+        <option value="create">Tarea nueva</option>
+        <optgroup label="Tarea existente">{candidates.map((item) => <option key={item.id} value={`link:${item.id}`}>{item.title}</option>)}</optgroup>
+      </select>
+    </label>
+    <label className="moodle-check"><input type="checkbox" checked={included} onChange={(event) => onChange(event.target.checked ? undefined : { action: hasBinding ? "unlink" : "ignore" })} /><span>Incluir<span className="sr-only"> {activity.title} en el cuaderno</span></span></label>
+  </div>;
 }
 
 function SubmissionSummary({ snapshot }: { snapshot: MoodleCourseSnapshot }) {
-  if (!snapshot.activities.length) return <p className="moodle-empty">Moodle no devolvió actividades compatibles.</p>;
+  if (!snapshot.activities.length) return <p className="moodle-empty">Moodle no devolvió actividades.</p>;
   return (
     <div className="moodle-submission-list">
-      <h3>Entregas leídas</h3>
       {snapshot.activities.map((activity) => {
         const submissions = snapshot.submissions.filter((item) => item.activityId === activity.id);
         return (

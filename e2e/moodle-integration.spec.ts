@@ -1,21 +1,20 @@
 import { expect, test, type Page } from "@playwright/test";
 import { installMoodleFixture, seedMoodleLocalRecords } from "./moodle-fixture";
-import { connectMoodleToken, openMoodleAccess } from "./moodle-workflow-helpers";
+import { MAPPING_HEADING, REVIEW_HEADING, chooseDestination, connectMoodleToken, openMoodleAccess } from "./moodle-workflow-helpers";
 
 const TOKEN = "1234567890abcdef1234567890abcdef";
 
 /** Picks the Moodle course and, unless a saved scope auto-restores straight to review, manually chooses the local destination. */
 async function connectAndLoad(page: Page): Promise<void> {
   await connectMoodleToken(page, TOKEN);
-  await page.getByRole("combobox", { name: "Curso Moodle", exact: true }).selectOption("4");
-  const groupSelect = page.getByRole("combobox", { name: "Grupo de Edunoza", exact: true });
-  const mappingHeading = page.getByRole("heading", { name: "Alumnado y actividades" });
-  const reviewHeading = page.getByRole("heading", { name: "Cambios y notas" });
-  await expect(groupSelect.or(mappingHeading).or(reviewHeading)).toBeVisible();
-  if (await groupSelect.isVisible()) {
-    await groupSelect.selectOption("moodle-local-class");
-    await page.getByRole("combobox", { name: "Materia de Edunoza", exact: true }).selectOption("moodle-local-subject");
-    await page.getByRole("button", { name: "Continuar a revisión", exact: true }).click();
+  await page.getByRole("combobox", { name: "Curso de Moodle", exact: true }).selectOption("4");
+  const remoteGroupSelect = page.getByRole("combobox", { name: "Grupo de Moodle (opcional)", exact: true });
+  const mappingHeading = page.getByRole("heading", { name: MAPPING_HEADING });
+  const reviewHeading = page.getByRole("heading", { name: REVIEW_HEADING });
+  await expect(remoteGroupSelect.or(mappingHeading).or(reviewHeading)).toBeVisible();
+  if (await remoteGroupSelect.isVisible()) {
+    await chooseDestination(page, "moodle-local-class", "moodle-local-subject");
+    await page.getByRole("button", { name: "Continuar", exact: true }).click();
   }
 }
 
@@ -30,18 +29,19 @@ for (const width of [390, 1440]) {
     await seedMoodleLocalRecords(page);
     await page.reload();
     await connectAndLoad(page);
-    await page.getByRole("combobox", { name: "Decisión para Moodle Pupil", exact: true }).selectOption("link");
-    await page.getByRole("combobox", { name: "Registro local para Moodle Pupil", exact: true }).selectOption("moodle-local-student");
-    await page.getByRole("combobox", { name: "Decisión para Moodle assignment", exact: true }).selectOption("link");
-    await page.getByRole("combobox", { name: "Registro local para Moodle assignment", exact: true }).selectOption("moodle-local-task");
-    await page.getByRole("button", { name: "Comprobar asociaciones", exact: true }).click();
-    await expect(page.getByRole("region", { name: "Vista previa de asociaciones", exact: true })).toBeVisible();
-    await page.getByRole("button", { name: /^Guardar 2 asociaci/ }).click();
-    // Saving mapping auto-triggers the changes/grades review; wait for it directly
-    // rather than an intermediate notice, since the two async steps can be batched.
-    await expect(page.getByText(/Moodle: 70.*100.*7.*10/)).toBeVisible();
-    await page.getByRole("radio", { name: "Importar Moodle", exact: true }).check();
-    await page.getByRole("button", { name: "Aplicar cambios y notas", exact: true }).click();
+    // "Local Pupil" could be the same person, so the row waits for an explicit decision.
+    const save = page.getByRole("button", { name: "Guardar y ver notas", exact: true });
+    await expect(save).toBeDisabled();
+    await expect(page.getByText("Falta 1 decisión", { exact: true })).toBeVisible();
+    await page.getByRole("combobox", { name: "Alumno de Edunoza para Moodle Pupil", exact: true }).selectOption("link:moodle-local-student");
+    await page.getByRole("combobox", { name: "Tarea de Edunoza para Moodle assignment", exact: true }).selectOption("link:moodle-local-task");
+    await save.click();
+    // Saving the matching opens the grades review; the local 6 differs from Moodle's 70/100.
+    await expect(page.getByRole("heading", { name: REVIEW_HEADING })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Terminar sin importar notas", exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Usar 7", exact: true }).click();
+    await page.getByRole("button", { name: "Importar 1 nota al cuaderno", exact: true }).click();
+    await expect(page.getByRole("heading", { name: "1 nota ya está en el cuaderno" })).toBeVisible();
     await expect.poll(async () => page.evaluate(async () => {
       const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
       return (await db.taskDirectGrades.get("moodle-local-grade"))?.score;
@@ -52,9 +52,11 @@ for (const width of [390, 1440]) {
     await openMoodleAccess(page);
     await expect(page.getByLabel("Token del servicio web", { exact: true })).toHaveValue(TOKEN);
     await connectAndLoad(page);
-    // Existing bindings for this scope auto-advance past "Vincular" to "Revisar y aplicar"; step back to confirm the mapping itself survived reconnecting.
-    await page.getByRole("navigation", { name: "Pasos para importar datos de Moodle" }).getByRole("button", { name: /Vincular/ }).click();
-    await expect(page.getByRole("combobox", { name: "Registro local para Moodle Pupil", exact: true })).toHaveValue("moodle-local-student");
+    // A saved destination opens the grades step directly; step back to confirm the matching survived reconnecting.
+    await expect(page.getByRole("heading", { name: REVIEW_HEADING })).toBeVisible();
+    await page.getByRole("navigation", { name: "Pasos para importar datos de Moodle" }).getByRole("button", { name: /Emparejar/ }).click();
+    await page.getByText("Ver 1 alumno emparejado", { exact: true }).click();
+    await expect(page.getByRole("combobox", { name: "Alumno de Edunoza para Moodle Pupil", exact: true })).toHaveValue("link:moodle-local-student");
     const wire = await page.evaluate(async () => {
       const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
       const fixture = (window as unknown as { moodleFixture: { calls: { functionName: string; url: string; body: string }[] } }).moodleFixture;
@@ -92,14 +94,14 @@ test("disconnect during Moodle loading discards pending results and tokens", asy
   await seedMoodleLocalRecords(page);
   await page.reload();
   await connectAndLoad(page);
-  await page.getByRole("navigation", { name: "Pasos para importar datos de Moodle" }).getByRole("button", { name: /Elegir clase/ }).click();
+  await page.getByRole("navigation", { name: "Pasos para importar datos de Moodle" }).getByRole("button", { name: /Origen y destino/ }).click();
   await page.evaluate(() => { (window as unknown as { moodleFixture: { pending: boolean } }).moodleFixture.pending = true; });
   await page.getByRole("button", { name: "Actualizar curso", exact: true }).click();
   await page.getByRole("button", { name: "Desconectar", exact: true }).click();
   await openMoodleAccess(page);
   await expect(page.getByRole("button", { name: "Conectar", exact: true })).toBeVisible();
   await expect(page.getByLabel("Token del servicio web", { exact: true })).toHaveValue(TOKEN);
-  await expect(page.getByRole("combobox", { name: "Curso Moodle", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("combobox", { name: "Curso de Moodle", exact: true })).toHaveCount(0);
   expect(await page.evaluate(async () => {
     const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
     return await db.moodleBindings.count();
@@ -112,12 +114,11 @@ test("creating a scope for an existing group only adds a subject, never a duplic
   await seedMoodleLocalRecords(page);
   await page.reload();
   await connectMoodleToken(page, TOKEN);
-  await page.getByRole("combobox", { name: "Curso Moodle", exact: true }).selectOption("4");
-  await page.getByRole("combobox", { name: "Grupo de Edunoza", exact: true }).selectOption("moodle-local-class");
-  await page.getByRole("combobox", { name: "Materia de Edunoza", exact: true }).selectOption("__create__");
+  await page.getByRole("combobox", { name: "Curso de Moodle", exact: true }).selectOption("4");
+  await chooseDestination(page, "moodle-local-class", "__create__");
   await page.getByLabel("Nombre de la materia", { exact: true }).fill("Biología de Moodle");
-  await page.getByRole("button", { name: "Continuar a revisión", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Alumnado y actividades" })).toBeVisible();
+  await page.getByRole("button", { name: "Continuar", exact: true }).click();
+  await expect(page.getByRole("heading", { name: MAPPING_HEADING })).toBeVisible();
   const state = await page.evaluate(async () => {
     const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
     const classes = await db.classGroups.toArray();
@@ -133,13 +134,11 @@ test("creating a scope for an existing group only adds a subject, never a duplic
   // subject yet: linking must still offer them as a candidate (regression coverage for
   // a teacher who couldn't complete any student associations at all because the
   // candidate list only offered students already enrolled in the subject).
-  await page.getByRole("combobox", { name: "Decisión para Moodle Pupil", exact: true }).selectOption("link");
-  const localCandidates = await page.getByRole("combobox", { name: "Registro local para Moodle Pupil", exact: true }).locator("option").allTextContents();
+  const localCandidates = await page.getByRole("combobox", { name: "Alumno de Edunoza para Moodle Pupil", exact: true }).locator("option").allTextContents();
   expect(localCandidates).toContain("Local Pupil");
-  await page.getByRole("combobox", { name: "Registro local para Moodle Pupil", exact: true }).selectOption({ label: "Local Pupil" });
-  await page.getByRole("button", { name: "Comprobar asociaciones", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Vista previa de asociaciones", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /^Guardar/ }).click();
+  await page.getByRole("combobox", { name: "Alumno de Edunoza para Moodle Pupil", exact: true }).selectOption({ label: "Local Pupil" });
+  await page.getByRole("checkbox", { name: "Incluir Moodle assignment en el cuaderno", exact: true }).uncheck();
+  await page.getByRole("button", { name: "Guardar y ver notas", exact: true }).click();
   // Linking must bind the student without silently touching academic data (no
   // auto-enrollment): only a moodleBindings row appears, subjectStudentLinks is untouched.
   await expect.poll(async () => page.evaluate(async () => {
@@ -155,7 +154,7 @@ test("creating a scope for an existing group only adds a subject, never a duplic
   expect(newSubjectEnrollment).toBe(false);
 });
 
-test("suggests an exact accent-insensitive name match but never links it automatically", async ({ page }) => {
+test("preselects an exact accent-insensitive name match but saves nothing until confirmed", async ({ page }) => {
   await installMoodleFixture(page);
   await page.goto("/config/moodle");
   await seedMoodleLocalRecords(page);
@@ -167,33 +166,24 @@ test("suggests an exact accent-insensitive name match but never links it automat
   });
   await page.reload();
   await connectMoodleToken(page, TOKEN);
-  await page.getByRole("combobox", { name: "Curso Moodle", exact: true }).selectOption("4");
-  await page.getByRole("combobox", { name: "Grupo de Edunoza", exact: true }).waitFor({ state: "visible" });
-  await page.getByRole("combobox", { name: "Grupo de Edunoza", exact: true }).selectOption("moodle-local-class");
-  await page.getByRole("combobox", { name: "Materia de Edunoza", exact: true }).selectOption("__create__");
+  await page.getByRole("combobox", { name: "Curso de Moodle", exact: true }).selectOption("4");
+  await chooseDestination(page, "moodle-local-class", "__create__");
   await page.getByLabel("Nombre de la materia", { exact: true }).fill("Suggestion test subject");
-  await page.getByRole("button", { name: "Continuar a revisión", exact: true }).click();
-  await expect(page.getByRole("heading", { name: "Alumnado y actividades" })).toBeVisible();
+  await page.getByRole("button", { name: "Continuar", exact: true }).click();
+  await expect(page.getByRole("heading", { name: MAPPING_HEADING })).toBeVisible();
 
-  // No decision has been made yet: nothing is linked, only a suggestion is offered.
+  // The match is only preselected: nothing is linked until the teacher saves.
   expect(await page.evaluate(async () => {
     const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
     return await db.moodleBindings.where("kind").equals("student").count();
   })).toBe(0);
 
-  const row = page.locator(".moodle-mapping-row", { hasText: "Moodle Pupil" });
-  await expect(row.getByText("Coincidencia: Moodle Púpil", { exact: false })).toBeVisible();
-  await row.getByRole("button", { name: "Usar la coincidencia Moodle Púpil para Moodle Pupil", exact: true }).click();
-  await expect(row.getByRole("combobox").nth(1)).toHaveValue("exact-match-student");
-
-  // Reset the manual choice, then confirm the bulk shortcut reaches the same result.
-  await row.getByRole("combobox").first().selectOption("ignore");
-  await page.getByRole("button", { name: /^Vincular \d+ coincidencias? exactas?$/ }).click();
-  await expect(row.getByRole("combobox").nth(1)).toHaveValue("exact-match-student");
-
-  await page.getByRole("button", { name: "Comprobar asociaciones", exact: true }).click();
-  await expect(page.getByRole("region", { name: "Vista previa de asociaciones", exact: true })).toBeVisible();
-  await page.getByRole("button", { name: /^Guardar/ }).click();
+  // "Local Pupil" is not an exact match, so it is neither suggested nor left pending.
+  await expect(page.getByText("Falta 1 decisión", { exact: true })).toHaveCount(0);
+  await page.getByText("Ver 1 alumno emparejado", { exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Alumno de Edunoza para Moodle Pupil", exact: true })).toHaveValue("link:exact-match-student");
+  await page.getByRole("checkbox", { name: "Incluir Moodle assignment en el cuaderno", exact: true }).uncheck();
+  await page.getByRole("button", { name: "Guardar y ver notas", exact: true }).click();
   await expect.poll(async () => page.evaluate(async () => {
     const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
     const binding = await db.moodleBindings.where("kind").equals("student").and((item) => item.remoteId === 11).first();

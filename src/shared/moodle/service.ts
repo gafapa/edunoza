@@ -87,6 +87,8 @@ export type MoodleGradeSkip = {
   userId: number;
   taskId: string;
   studentId: string;
+  /** Lets the UI group skipped grades and point at the fix. */
+  code: "team-submission" | "no-max" | "instrument" | "closed-period";
   reason: string;
 };
 
@@ -668,6 +670,20 @@ export async function applyUpdates(preview: MoodleUpdatePreview, resolutions: Re
   });
 }
 
+const SKIP_REASONS: Record<MoodleGradeSkip["code"], string> = {
+  "team-submission": "Es una entrega en grupo en Moodle; Edunoza no importa notas de entregas en grupo.",
+  "no-max": "La actividad de Moodle no tiene una puntuación máxima configurada.",
+  instrument: "En Edunoza esta tarea no se corrige con nota directa (usa rúbrica, lista de cotejo o no está configurada).",
+  "closed-period": "La tarea pertenece a una evaluación cerrada."
+};
+
+async function inClosedPeriod(taskId: string, scope: MoodleScope): Promise<boolean> {
+  const configs = await db.taskGradebookConfigs.where("[taskId+subjectId+classId]").equals([taskId, scope.subjectId, scope.classId]).toArray();
+  if (configs.length !== 1 || !configs[0].academicPeriodId) return false;
+  const period = await db.academicPeriods.get(configs[0].academicPeriodId);
+  return period?.status === "closed";
+}
+
 async function compatibleConfig(taskId: string, scope: MoodleScope): Promise<TaskGradebookConfig | undefined> {
   const configs = await db.taskGradebookConfigs.where("[taskId+subjectId+classId]").equals([taskId, scope.subjectId, scope.classId]).toArray();
   if (configs.length !== 1 || configs[0].directGradeEnabled !== true || configs[0].rubricTemplateId || configs[0].checklistTemplateId) return undefined;
@@ -700,15 +716,15 @@ export async function previewGrades(connectionId: string, snapshot: MoodleCourse
     const activityBinding = activityBindings.get(grade.activityId);
     const studentBinding = studentBindings.get(grade.userId);
     if (!activity || !activityBinding || !studentBinding) continue;
-    const reason = activity.teamSubmission
-      ? "Esta actividad es una entrega en grupo en Moodle; Edunoza no importa notas de entregas en grupo."
+    const code: MoodleGradeSkip["code"] | undefined = activity.teamSubmission
+      ? "team-submission"
       : !activity.gradeMax || activity.gradeMax <= 0
-        ? "La actividad de Moodle no tiene una puntuación máxima configurada."
-        : !await compatibleConfig(activityBinding.localId, scope)
-          ? "La tarea local no usa evaluación directa (usa rúbrica, lista de verificación, o pertenece a un periodo cerrado o sin configurar); actívala con evaluación directa para importar notas de Moodle."
-          : undefined;
-    if (reason) {
-      skipped.push({ activityId: activity.id, userId: grade.userId, taskId: activityBinding.localId, studentId: studentBinding.localId, reason });
+        ? "no-max"
+        : await compatibleConfig(activityBinding.localId, scope)
+          ? undefined
+          : await inClosedPeriod(activityBinding.localId, scope) ? "closed-period" : "instrument";
+    if (code) {
+      skipped.push({ activityId: activity.id, userId: grade.userId, taskId: activityBinding.localId, studentId: studentBinding.localId, code, reason: SKIP_REASONS[code] });
       continue;
     }
     const gradeMax = activity.gradeMax!;
