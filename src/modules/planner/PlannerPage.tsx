@@ -54,6 +54,9 @@ type PlannerUndoAction = {
   session: TaskSession;
 };
 
+/** A longer backlog (for example after importing a Moodle course) gets a filter box. */
+const BACKLOG_FILTER_THRESHOLD = 8;
+
 function cellKey(classId: string, subjectId: string, date: string, slotId: string): string {
   return `${classId}:${subjectId}:${date}:${slotId}`;
 }
@@ -106,6 +109,7 @@ export function PlannerPage() {
   const [sessionPlanDraft, setSessionPlanDraft] = useState<SessionPlanDraft>(() => sessionPlanDraftFromSession());
   const [draggedSessionId, setDraggedSessionId] = useState("");
   const [quickTaskKey, setQuickTaskKey] = useState("");
+  const [backlogFilter, setBacklogFilter] = useState("");
   const [notice, setNotice] = useState("");
   const [isBusy, setIsBusy] = useState(false);
   const [undoAction, setUndoAction] = useState<PlannerUndoAction | null>(null);
@@ -455,6 +459,14 @@ export function PlannerPage() {
     }
     return rows.sort((a, b) => a.subject.name.localeCompare(b.subject.name) || a.task.title.localeCompare(b.task.title));
   }, [taskById, taskLinksBySubject, taskSessionCountByTaskSubject, unitById, visibleSubjects]);
+
+  const visibleBacklog = useMemo(() => {
+    const fold = (value: string) => value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+    const query = fold(backlogFilter.trim());
+    if (!query || unplannedTasks.length <= BACKLOG_FILTER_THRESHOLD) return unplannedTasks;
+    return unplannedTasks.filter((item) => fold(`${item.task.title} ${item.unitName} ${item.subject.name}`).includes(query));
+  }, [backlogFilter, unplannedTasks]);
+  const showBacklogSubject = new Set(unplannedTasks.map((item) => item.subject.id)).size > 1;
 
   const pendingSessionCount = useMemo(
     () => unplannedTasks.reduce((total, item) => total + Math.max(0, item.expected - item.planned), 0),
@@ -900,7 +912,22 @@ export function PlannerPage() {
           </div>
 
           <div className="planner-backlog">
-            <strong>Sesiones por planificar</strong>
+            <div className="planner-backlog-heading">
+              <strong id="planner-backlog-title">Sesiones por planificar</strong>
+              {pendingSessionCount ? <span className="planner-backlog-count" aria-label={`${pendingSessionCount} sesiones pendientes`}>{pendingSessionCount}</span> : null}
+            </div>
+            {unplannedTasks.length > BACKLOG_FILTER_THRESHOLD ? (
+              <label className="planner-backlog-filter">
+                <span className="sr-only">Buscar tarea por planificar</span>
+                <input
+                  className="input"
+                  type="search"
+                  placeholder={`Buscar entre ${unplannedTasks.length} tareas`}
+                  value={backlogFilter}
+                  onChange={(event) => setBacklogFilter(event.target.value)}
+                />
+              </label>
+            ) : null}
             {selectedQuickTask ? (
               <div className="planner-quick-selection" role="status" aria-live="polite">
                 <div>
@@ -917,8 +944,8 @@ export function PlannerPage() {
                 </button>
               </div>
             ) : null}
-            <div className="planner-backlog-list">
-              {unplannedTasks.map((item) => (
+            <div className="planner-backlog-list" role="group" aria-labelledby="planner-backlog-title">
+              {visibleBacklog.map((item) => (
                 <button
                   key={`${item.task.id}:${item.subject.id}`}
                   type="button"
@@ -931,12 +958,16 @@ export function PlannerPage() {
                   }}
                 >
                   <span>{item.task.title || "Tarea sin título"}</span>
-                  <small>{item.subject.name} · {item.unitName}</small>
-                  <small>{Math.max(0, item.expected - item.planned)} pendientes · {item.planned}/{item.expected} planificadas</small>
+                  <small>
+                    {showBacklogSubject ? `${item.subject.name} · ` : ""}{item.unitName}
+                    {item.expected > 1 ? ` · ${item.planned}/${item.expected} sesiones` : ""}
+                  </small>
                 </button>
               ))}
               {unplannedTasks.length === 0 ? (
                 <p className="hint">No hay sesiones pendientes de planificación para el contexto actual.</p>
+              ) : visibleBacklog.length === 0 ? (
+                <p className="hint">Ninguna tarea coincide con la búsqueda.</p>
               ) : null}
             </div>
           </div>

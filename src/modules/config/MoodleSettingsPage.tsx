@@ -103,6 +103,41 @@ function findExactNameMatch(label: string, candidates: Array<{ id: string; label
   return matches.length === 1 ? matches[0] : undefined;
 }
 
+function nameTokens(name: string): string[] {
+  return normalizeNameForMatch(name).replace(/[^\p{L}\p{N}]+/gu, " ").trim().split(" ").filter(Boolean);
+}
+
+/**
+ * Likeness of two names in [0, 1], used only to *suggest* a pairing the teacher must confirm.
+ * Names with different numbers ("Tema 2" / "Tema 3") are never alike.
+ */
+function nameSimilarity(left: string, right: string): number {
+  const a = nameTokens(left);
+  const b = nameTokens(right);
+  if (!a.length || !b.length) return 0;
+  const numbers = (tokens: string[]) => tokens.filter((token) => /^\d+$/.test(token)).sort().join(" ");
+  if (numbers(a) !== numbers(b) && numbers(a) && numbers(b)) return 0;
+  const joinedA = a.join(" ");
+  const joinedB = b.join(" ");
+  if (joinedA === joinedB || [...a].sort().join(" ") === [...b].sort().join(" ")) return 1;
+  const shorter = joinedA.length <= joinedB.length ? joinedA : joinedB;
+  const longer = shorter === joinedA ? joinedB : joinedA;
+  if (shorter.length >= 4 && ` ${longer} `.includes(` ${shorter} `)) return 0.9;
+  const setA = new Set(a);
+  const setB = new Set(b);
+  const shared = [...setA].filter((token) => setB.has(token)).length;
+  return shared / new Set([...setA, ...setB]).size;
+}
+
+function findSimilarName(label: string, candidates: Array<{ id: string; label: string }>): { id: string; label: string } | undefined {
+  let best: { id: string; label: string; score: number } | undefined;
+  for (const candidate of candidates) {
+    const score = nameSimilarity(label, candidate.label);
+    if (score >= 0.5 && (!best || score > best.score)) best = { ...candidate, score };
+  }
+  return best && { id: best.id, label: best.label };
+}
+
 function capabilityLabel(name: string): string {
   const labels: Record<string, string> = {
     core_enrol_get_enrolled_users: "Participantes",
@@ -351,6 +386,28 @@ export function MoodleSettingsPage() {
     const used = new Set([...scopedBindings.filter((item) => item.kind === "student").map((item) => item.localId), ...autoMatches.values()]);
     return localStudents.filter((item) => !used.has(item.id)).length;
   })();
+  // Similar (not exact) names against still-unpaired local records: shown as a suggestion on a
+  // row that waits for the teacher, so a renamed activity never silently becomes a duplicate task.
+  const suggestions = (() => {
+    const result = new Map<string, { id: string; label: string }>();
+    const taken = new Set([...scopedBindings.map((item) => `${item.kind}:${item.localId}`),
+      ...[...autoMatches].map(([key, localId]) => `${key.split(":")[0]}:${localId}`)]);
+    const studentCandidates = localStudents.filter((item) => !taken.has(`student:${item.id}`)).map((item) => ({ id: item.id, label: item.fullName }));
+    const taskCandidates = localTasks.filter((item) => !taken.has(`activity:${item.id}`)).map((item) => ({ id: item.id, label: item.title }));
+    for (const student of scopedRemoteStudents) {
+      const key = mappingKey("student", student.id);
+      if (bindingFor("student", student.id) || autoMatches.has(key)) continue;
+      const match = findSimilarName(student.fullName, studentCandidates);
+      if (match) result.set(key, match);
+    }
+    for (const activity of gradableActivities) {
+      const key = mappingKey("activity", activity.id);
+      if (bindingFor("activity", activity.id) || autoMatches.has(key)) continue;
+      const match = findSimilarName(activity.title, taskCandidates);
+      if (match) result.set(key, match);
+    }
+    return result;
+  })();
   const studentDecision = (remoteId: number): MappingDecision => {
     const key = mappingKey("student", remoteId);
     const binding = bindingFor("student", remoteId);
@@ -360,18 +417,23 @@ export function MoodleSettingsPage() {
     // With unlinked students left in the class, a new record could duplicate one of them: ask.
     return freeLocalStudentCount > 0 ? null : { action: "create" };
   };
-  const activityDecision = (remoteId: number): MappingDraft => {
+  const activityDecision = (remoteId: number): MappingDecision => {
     const key = mappingKey("activity", remoteId);
     const binding = bindingFor("activity", remoteId);
     if (mappingDrafts[key]) return mappingDrafts[key];
     if (binding) return { action: "link", localId: binding.localId };
     if (autoMatches.has(key)) return { action: "link", localId: autoMatches.get(key) };
-    return { action: "create" };
+    return suggestions.has(key) ? null : { action: "create" };
   };
   const studentRows = scopedRemoteStudents.map((student) => ({ student, decision: studentDecision(student.id), binding: bindingFor("student", student.id) }));
+  const activityRows = gradableActivities.map((activity) => ({ activity, decision: activityDecision(activity.id), binding: bindingFor("activity", activity.id) }));
   const matchedStudentRows = studentRows.filter((row) => row.decision?.action === "link" && !mappingDrafts[mappingKey("student", row.student.id)]);
   const attentionStudentRows = studentRows.filter((row) => !matchedStudentRows.includes(row));
-  const undecidedCount = studentRows.filter((row) => row.decision === null).length;
+  const undecidedCount = studentRows.filter((row) => row.decision === null).length + activityRows.filter((row) => row.decision === null).length;
+  const unpairedLocalTasks = (() => {
+    const paired = new Set(activityRows.flatMap((row) => row.decision?.action === "link" && row.decision.localId ? [row.decision.localId] : []));
+    return localTasks.filter((task) => !paired.has(task.id)).sort((a, b) => a.title.localeCompare(b.title));
+  })();
   const newStudentCount = studentRows.filter((row) => row.decision?.action === "create").length;
   const linkedStudentCount = studentRows.filter((row) => row.decision?.action === "link").length;
   const unlinkedRemoteCount = scopedRemoteStudents.filter((item) => !bindingFor("student", item.id)).length +
@@ -638,7 +700,7 @@ export function MoodleSettingsPage() {
     if (!connection || !snapshot || !scope || undecidedCount > 0) return;
     const choices: MoodleMappingChoice[] = [
       ...studentRows.map((row) => ({ kind: "student" as const, remoteId: row.student.id, ...(row.decision ?? { action: "ignore" as const }) })),
-      ...gradableActivities.map((activity) => ({ kind: "activity" as const, remoteId: activity.id, ...activityDecision(activity.id) }))
+      ...activityRows.map((row) => ({ kind: "activity" as const, remoteId: row.activity.id, ...(row.decision ?? { action: "ignore" as const }) }))
     ];
     const { controller, version } = beginRequest("mapping-apply");
     try {
@@ -951,7 +1013,7 @@ export function MoodleSettingsPage() {
               </div>
             </div>
             {attentionStudentRows.length ? <div className="moodle-mapping-list">{attentionStudentRows.map(({ student, decision, binding }) => (
-              <StudentRow key={student.id} label={student.fullName} decision={decision} hasBinding={Boolean(binding)} candidates={localStudents} onChange={(draft) => setDraft("student", student.id, draft)} />
+              <StudentRow key={student.id} label={student.fullName} decision={decision} hasBinding={Boolean(binding)} candidates={localStudents} suggestion={decision === null ? suggestions.get(mappingKey("student", student.id)) : undefined} onChange={(draft) => setDraft("student", student.id, draft)} />
             ))}</div> : null}
             {matchedStudentRows.length ? <details className="moodle-mapping-group"><summary>Ver {plural(matchedStudentRows.length, "alumno emparejado", "alumnos emparejados")}</summary><div className="moodle-mapping-list">{matchedStudentRows.map(({ student, decision, binding }) => (
               <StudentRow key={student.id} label={student.fullName} decision={decision} hasBinding={Boolean(binding)} candidates={localStudents} onChange={(draft) => setDraft("student", student.id, draft)} />
@@ -964,10 +1026,17 @@ export function MoodleSettingsPage() {
               <h3>Actividades con nota · {gradableActivities.length}</h3>
               <span className="moodle-step-guidance">Las marcadas entran en el cuaderno como tareas.</span>
             </div>
-            {gradableActivities.length ? <div className="moodle-mapping-list">{gradableActivities.map((activity) => (
-              <ActivityRow key={activity.id} activity={activity} decision={activityDecision(activity.id)} hasBinding={Boolean(bindingFor("activity", activity.id))} candidates={localTasks} onChange={(draft) => setDraft("activity", activity.id, draft)} />
+            {activityRows.length ? <div className="moodle-mapping-list">{activityRows.map(({ activity, decision, binding }) => (
+              <ActivityRow key={activity.id} activity={activity} decision={decision} hasBinding={Boolean(binding)} candidates={localTasks} suggestion={decision === null ? suggestions.get(mappingKey("activity", activity.id)) : undefined} onChange={(draft) => setDraft("activity", activity.id, draft)} />
             ))}</div> : <p className="moodle-empty">Este curso de Moodle no tiene actividades con nota.</p>}
             {otherActivities.length ? <p className="moodle-step-guidance">{plural(otherActivities.length, "recurso sin nota (apuntes, enlaces…) no se importa", "recursos sin nota (apuntes, enlaces…) no se importan")}.</p> : null}
+            {unpairedLocalTasks.length ? (
+              <details className="moodle-mapping-group">
+                <summary>{plural(unpairedLocalTasks.length, "tarea tuya sin actividad de Moodle", "tareas tuyas sin actividad de Moodle")}</summary>
+                <p className="moodle-step-guidance">Sus notas no llegarán de Moodle. Si alguna es la misma que una actividad de arriba, elígela en su desplegable.</p>
+                <ul className="moodle-plain-list">{unpairedLocalTasks.map((task) => <li key={task.id}>{task.title || "Tarea sin título"}</li>)}</ul>
+              </details>
+            ) : null}
           </div>
 
           {mappingErrors.length ? <div className="moodle-warnings" role="alert"><ul>{mappingErrors.map((message) => <li key={message}>{message}</li>)}</ul></div> : null}
@@ -1104,7 +1173,12 @@ export function MoodleSettingsPage() {
   );
 }
 
-function StudentRow({ label, decision, hasBinding, candidates, onChange }: { label: string; decision: MappingDecision; hasBinding: boolean; candidates: Student[]; onChange: (draft: MappingDraft | undefined) => void }) {
+function SuggestionHint({ label, suggestion, fallback, onAccept }: { label: string; suggestion?: { id: string; label: string }; fallback: string; onAccept: (localId: string) => void }) {
+  if (!suggestion) return <span>{fallback}</span>;
+  return <span className="moodle-suggestion">¿Es «{suggestion.label}»? <button type="button" className="moodle-text-button" aria-label={`Emparejar ${label} con ${suggestion.label}`} onClick={() => onAccept(suggestion.id)}>Sí, emparejar</button></span>;
+}
+
+function StudentRow({ label, decision, hasBinding, candidates, suggestion, onChange }: { label: string; decision: MappingDecision; hasBinding: boolean; candidates: Student[]; suggestion?: { id: string; label: string }; onChange: (draft: MappingDraft | undefined) => void }) {
   const linked = decision?.action === "link" ? candidates.find((item) => item.id === decision.localId) : undefined;
   const status = decision === null
     ? <span className="moodle-tag warn">Por decidir</span>
@@ -1112,7 +1186,9 @@ function StudentRow({ label, decision, hasBinding, candidates, onChange }: { lab
       : decision.action === "link" ? <span className="moodle-tag ok">Emparejado</span>
         : <span className="moodle-tag">No se importa</span>;
   return <div className={`moodle-mapping-row${decision === null ? " pending" : ""}`}>
-    <div><strong>{label}</strong><span>{decision === null ? "Hay alumnos en la clase que podrían ser esta persona" : linked ? `En Edunoza: ${linked.fullName}` : decision.action === "create" ? "Se creará en la clase" : ""}</span></div>
+    <div><strong>{label}</strong>{decision === null
+      ? <SuggestionHint label={label} suggestion={suggestion} fallback="Hay alumnos en la clase que podrían ser esta persona" onAccept={(localId) => onChange({ action: "link", localId })} />
+      : <span>{linked ? `En Edunoza: ${linked.fullName}` : decision.action === "create" ? "Se creará en la clase" : ""}</span>}</div>
     <label><span className="sr-only">Alumno de Edunoza para {label}</span>
       <select value={encodeDecision(decision)} onChange={(event) => onChange(decodeDecision(event.target.value))}>
         {decision === null ? <option value="">Elige…</option> : null}
@@ -1126,16 +1202,18 @@ function StudentRow({ label, decision, hasBinding, candidates, onChange }: { lab
   </div>;
 }
 
-function ActivityRow({ activity, decision, hasBinding, candidates, onChange }: { activity: MoodleActivity; decision: MappingDraft; hasBinding: boolean; candidates: Task[]; onChange: (draft: MappingDraft | undefined) => void }) {
-  const included = decision.action === "link" || decision.action === "create";
-  const target = decision.action === "link" ? `link:${decision.localId ?? ""}` : "create";
-  return <div className="moodle-mapping-row">
+function ActivityRow({ activity, decision, hasBinding, candidates, suggestion, onChange }: { activity: MoodleActivity; decision: MappingDecision; hasBinding: boolean; candidates: Task[]; suggestion?: { id: string; label: string }; onChange: (draft: MappingDraft | undefined) => void }) {
+  const included = decision === null || decision.action === "link" || decision.action === "create";
+  const target = decision === null ? "" : decision.action === "link" ? `link:${decision.localId ?? ""}` : "create";
+  return <div className={`moodle-mapping-row${decision === null ? " pending" : ""}`}>
     <div>
       <strong>{activity.title}</strong>
-      <span className="moodle-tags"><span className="moodle-tag">{moduleLabel(activity.module)}</span>{activity.advancedGrading ? <span className="moodle-tag accent">Rúbrica en Moodle</span> : null}</span>
+      <span className="moodle-tags"><span className="moodle-tag">{moduleLabel(activity.module)}</span>{activity.advancedGrading ? <span className="moodle-tag accent">Rúbrica en Moodle</span> : null}{decision === null ? <span className="moodle-tag warn">Por decidir</span> : null}</span>
+      {decision === null ? <SuggestionHint label={activity.title} suggestion={suggestion} fallback="" onAccept={(localId) => onChange({ action: "link", localId })} /> : null}
     </div>
     <label><span className="sr-only">Tarea de Edunoza para {activity.title}</span>
       <select value={included ? target : "create"} disabled={!included} onChange={(event) => onChange(decodeDecision(event.target.value))}>
+        {decision === null ? <option value="">Elige…</option> : null}
         <option value="create">Tarea nueva</option>
         <optgroup label="Tarea existente">{candidates.map((item) => <option key={item.id} value={`link:${item.id}`}>{item.title}</option>)}</optgroup>
       </select>

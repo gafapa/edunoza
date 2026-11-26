@@ -190,3 +190,32 @@ test("preselects an exact accent-insensitive name match but saves nothing until 
     return binding?.localId;
   })).toBe("exact-match-student");
 });
+
+test("a renamed Moodle activity waits for a decision instead of duplicating a similar local task", async ({ page }) => {
+  await installMoodleFixture(page);
+  await page.goto("/config/moodle");
+  await seedMoodleLocalRecords(page);
+  await page.reload();
+  await connectMoodleToken(page, TOKEN);
+  await page.evaluate(() => { (window as unknown as { moodleFixture: { activityTitle: string } }).moodleFixture.activityTitle = "My existing task (1ºB)"; });
+  await page.getByRole("combobox", { name: "Curso de Moodle", exact: true }).selectOption("4");
+  await chooseDestination(page, "moodle-local-class", "moodle-local-subject");
+  await page.getByRole("button", { name: "Continuar", exact: true }).click();
+  await expect(page.getByRole("heading", { name: MAPPING_HEADING })).toBeVisible();
+
+  // The student and the activity both wait; nothing defaults to a new duplicate task.
+  await expect(page.getByText("Faltan 2 decisiones", { exact: true })).toBeVisible();
+  await expect(page.getByRole("combobox", { name: "Tarea de Edunoza para My existing task (1ºB)", exact: true })).toHaveValue("");
+  await expect(page.getByText(/1 tarea tuya sin actividad de Moodle/)).toBeVisible();
+  await page.getByRole("button", { name: "Emparejar My existing task (1ºB) con My existing task", exact: true }).click();
+  await expect(page.getByRole("combobox", { name: "Tarea de Edunoza para My existing task (1ºB)", exact: true })).toHaveValue("link:moodle-local-task");
+  await expect(page.getByText(/tarea tuya sin actividad de Moodle/)).toHaveCount(0);
+
+  await page.getByRole("combobox", { name: "Alumno de Edunoza para Moodle Pupil", exact: true }).selectOption("link:moodle-local-student");
+  await page.getByRole("button", { name: "Guardar y ver notas", exact: true }).click();
+  await expect(page.getByRole("heading", { name: REVIEW_HEADING })).toBeVisible();
+  expect(await page.evaluate(async () => {
+    const { db } = await import(/* @vite-ignore */ "/src/shared/db/database.ts");
+    return { tasks: await db.tasks.count(), binding: (await db.moodleBindings.where("kind").equals("activity").first())?.localId };
+  })).toEqual({ tasks: 1, binding: "moodle-local-task" });
+});

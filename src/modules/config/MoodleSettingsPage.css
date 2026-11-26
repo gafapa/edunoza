@@ -668,6 +668,25 @@
   background: #fffaf2;
 }
 
+.moodle-mapping-row > div:first-child .moodle-suggestion {
+  color: #7a4100;
+  font-size: 0.86rem;
+  font-weight: 650;
+}
+
+.moodle-suggestion .moodle-text-button {
+  min-height: 32px;
+  padding: 0 4px;
+  font-size: 0.86rem;
+}
+
+.moodle-plain-list {
+  margin: 0 0 8px;
+  padding-left: 1.2rem;
+  color: #3d5378;
+  line-height: 1.6;
+}
+
 .moodle-check {
   display: inline-flex;
   align-items: center;
